@@ -7,7 +7,7 @@ Standalone, bilingual contact-centre **audio transcription and interaction intel
 ## Scope
 
 - **Operations Console:** end-to-end processing counts and statuses for transcription, AI summarization, CRM update, CRM confirmation, and QA handoff; stage-specific exceptions.
-- **Interaction Explorer:** searchable full transcript, CRM summary, language, issues, sentiment, agent EQ/reasoning observations, ticket mapping, exportable documents, and QA handoff status.
+- **Interaction Explorer:** searchable full transcript, CRM summary, language, issues, sentiment, agent EQ/reasoning observations, ticket mapping, downloadable Word-compatible preview documents, and QA handoff status.
 - **Configuration Console:** independently configured speech-to-text service, AI summarization service and enterprise connections, with simulated health/error diagnostics and auditable demo configuration changes.
 - **AI Usage & Diagnostics:** audio minutes, LLM tokens, retries, provider error codes, request IDs and stage-specific diagnostics.
 - **Demo personas:** Platform Admin and a business-unit restricted BU Lead. These are UI-only simulations; real authorization must be enforced on a backend.
@@ -45,3 +45,8 @@ The frontend cannot determine if a provider is actually healthy by testing only 
 ## Security
 
 The GitHub repository was created with **public** visibility as observed when first accessed. Keep only synthetic data in this repository. Change visibility to private in GitHub settings before adding internal specs or sensitive implementation details; never commit secrets or real customer transcripts.
+## Current preview limitations
+
+- This version creates **Word-compatible .doc** demo downloads, not native **.docx**. Native DOCX generation and S3 folder writing belong in the production backend.
+- This is a source-code build, **not yet a hosted site**. Browser functionality and CI workflow execution have not yet been confirmed in this chat.
+- The demo role selector is not real authentication. Production needs backend-enforced RBAC.
