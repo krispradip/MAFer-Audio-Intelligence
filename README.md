@@ -50,3 +50,25 @@ The GitHub repository was created with **public** visibility as observed when fi
 - This version creates **Word-compatible .doc** demo downloads, not native **.docx**. Native DOCX generation and S3 folder writing belong in the production backend.
 - This is a source-code build, **not yet a hosted site**. Browser functionality and CI workflow execution have not yet been confirmed in this chat.
 - The demo role selector is not real authentication. Production needs backend-enforced RBAC.
+
+
+## Personal test deployment
+
+Cloudflare Workers URL provided by project owner:
+https://mafer-audio-intelligence.kris-pradip.workers.dev/
+
+**Verification:** The link was provided as the deployment target, but live reachability and the published code revision have not been verified from this environment.
+
+### Test-data policy
+
+The personal sandbox is intended to process **synthetic English, Arabic and bilingual audio recordings**. Using synthetic audio does **not** require model responses to be simulated: future integrations can call real, separately configurable speech-to-text and summarization APIs through server-side adapters with secure secrets. No real customer recordings, CRM credentials, or corporate secrets should be committed to this public repository.
+
+Target test flow:
+1. Upload or select a synthetic call recording; assign a mock Genesys Conversation ID.
+2. Execute the approved speech-to-text service and capture the full time-aligned transcript.
+3. Execute the independent AI summarization service to extract sentiment, agent reasoning/EQ observations, issues, summary and next steps.
+4. Produce two Word documents and JSON artifacts.
+5. Simulate or sandbox-test CRM ticket correlation, update, acknowledgment, timeout and retry/reconciliation.
+6. Expose transcript JSON to QA.MAFer.AI without incorporating official QA scoring into this standalone service.
+
+The committed frontend **currently simulates** the transcription, summary and connection responses. Real audio upload, actual model invocation and native DOCX export are future implementation items. GitHub-to-Cloudflare auto-deployment has not been established by this repository's current code.
