@@ -76,3 +76,32 @@ Each dimension stores an identifier, name, observable definition, positive evide
 **Version pinning:** when summarization begins, resolve the published framework version applicable to the interaction's BU and persist the version IDs in the processing job. Store the exact versions and findings in `summary.json` / `metadata.json` with the Genesys Conversation ID and transcript version. Publishing a new framework does not change historical assessments; explicit reprocessing creates a new evaluation version. QA.MAFer.AI retains independent ownership of formal QA scores and rubrics.
 
 **Current mockup:** the Admin pages allow editing, local draft save, BU override creation and demo publishing. Published history is browser-local and does not constitute a shared or immutable audit log. The example evidence is fixed synthetic data; no live LLM call is made from these screens. The production backend must enforce schema validation, role checks, approvals, immutable version storage and controlled execution.
+
+## Manual audio ingestion and failed-run recovery
+
+**Manual Audio Upload** is a controlled fallback to automated Genesys-to-S3 ingestion, not a separate transcription pipeline. Both automated and manual submissions must use the same processing job schema, STT engine, summarization engine, EQ/problem-solving framework resolver, output contracts, and observability.
+
+### Frontend prototype (implemented)
+
+- Platform Admin can stage a new recording for any configured BU; the simulated VOX BU Lead can stage VOX recordings only.
+- Both can attach and locally preview supported audio (MP3, WAV, M4A, AAC, FLAC, OGG, WebM; 50 MB maximum) and stage a new interaction or a retry of an existing failed STT/summarization job.
+- A retry retains the Genesys Conversation ID and existing completed artifacts; it must not overwrite a prior successful transcript or summary before the replacement version is durable and validated.
+- No audio bytes are persisted in browser localStorage or committed to GitHub. The demo cannot transcribe or summarize audio.
+- The feature-gated `POST /api/manual-audio/jobs` client is included but the production endpoint is **not implemented**. The flag `window.MAFER_MANUAL_AUDIO_API_ENABLED` must remain disabled until the backend is approved.
+
+### Backend contract (to implement)
+
+`POST /api/manual-audio/jobs` (same-origin, authenticated, multipart/form-data):
+
+- `audio`: binary recording, verified MIME/signature, max 50 MB (configurable by policy)
+- `conversationId`: existing Genesys ID for retry, or an explicitly tracked manual ID for a new run
+- `mode`: `new` or `retry`
+- `bu`, `brand`, `agent`, `market`, `language`, `attempt`: validated against authoritative metadata and the caller's BU entitlements
+
+Successful acceptance: HTTP 202 and JSON `{"jobId":"<opaque-id>","status":"queued"}`. The frontend must not infer that transcription, CRM update or QA processing completed from this acknowledgment. Expose a separate authenticated job-status endpoint and only display verified stage results.
+
+Server-side requirements: Entra/SSO or approved identity, backend RBAC, virus scanning, content validation, throttling, file encryption, temporary upload storage, durable queue, job correlation, idempotent retries, failure classification, request tracing, retention, signed artifact access and audit history. Never accept a BU override from the browser without verifying the user's authorization. Avoid sending raw audio through APIM chat-completions endpoints. The STT adapter and LLM summarization adapter remain separate.
+
+For a failed **summarization-only** job with a valid completed transcript, a production retry may use the existing transcript without retranscribing audio; the backend chooses the safe restart stage. For failed transcription, the manually attached recording can be used to restart STT. CRM update retries remain subject to CRM acknowledgment reconciliation and are not automatically triggered by a manual audio upload.
+
+**Operational acceptance criteria:** upload with audio preview, no accidental auto-submission, a manual retry retaining the original Conversation ID, server-enforced BU access, clear queued/processing/completed/failed states, immutable output versions, and no synthetic findings presented as real audio-derived intelligence.
