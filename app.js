@@ -20,7 +20,9 @@ function detail(i){
    '<h3>Customer sentiment (model-inferred)</h3><p>'+esc(i.sentiment)+'</p>';
  }
  if(tab==="transcript"){
-  return i.lines.length?i.lines.map(l=>'<div class="transcript-line"><header><span>'+esc(l[1])+'</span><span>'+esc(l[0])+'</span></header><p>'+esc(l[2])+'</p></div>').join(""):'<div class="empty">Transcript unavailable until processing completes.</div>';
+  const problem=transIssue(i);
+  if(problem)return '<div class="empty">Transcript rejected: '+esc(problem.code)+' · '+esc(problem.message)+'</div>';
+  return i.segments?.length?i.segments.map(segment=>'<div class="transcript-line"><header><span>'+esc(segment.speaker)+'</span><span>'+esc(timing.formatTimestamp(segment.startMs))+' – '+esc(timing.formatTimestamp(segment.endMs))+'</span></header><p>'+esc(segment.text)+'</p></div>').join(""):'<div class="empty">Transcript unavailable until processing completes.</div>';
  }
  const fields=tab==="metadata"?[
   ["Conversation ID",i.id],["Agent",i.agent],["Business unit",i.bu],["Brand",i.brand],
@@ -145,10 +147,10 @@ function exportSample(kind){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
   return;
  }
- if(kind==="export-transcript"&&i.trans!=="completed")return toast("Transcript is not yet completed.");
- if(kind==="export-summary"&&i.sum!=="completed")return toast("Summary is not yet completed.");
+ if(kind==="export-transcript"&&transStatus(i)!=="completed")return toast("Transcript requires validated start/end timestamps before export.");
+ if(kind==="export-summary"&&(i.sum!=="completed"||transStatus(i)!=="completed"))return toast("Summary export requires a completed, timestamp-validated transcript.");
  const metadata="<p><b>Genesys Conversation ID:</b> "+esc(i.id)+"<br><b>CRM Ticket:</b> "+esc(i.ticket||"Not matched")+"<br><b>Agent:</b> "+esc(i.agent)+"<br><b>Business unit / brand:</b> "+esc(i.bu)+" / "+esc(i.brand)+"<br><b>Language:</b> "+esc(i.language)+"</p>";
- const transcript=i.lines.map(l=>"<p><b>"+esc(l[0])+" · "+esc(l[1])+":</b> "+esc(l[2])+"</p>").join("");
+ const transcript=(i.segments||[]).map(segment=>"<p><b>"+esc(timing.formatTimestamp(segment.startMs))+" – "+esc(timing.formatTimestamp(segment.endMs))+" · "+esc(segment.speaker)+":</b> "+esc(segment.text)+"</p>").join("");
  const summary="<h2>Reason for contact</h2><p>"+esc(i.reason)+"</p><h2>Customer issues ("+i.issues.length+")</h2><ul>"+i.issues.map(x=>"<li>"+esc(x.name)+" — "+esc(x.status)+"</li>").join("")+"</ul><h2>Post-call summary</h2><p>"+esc(i.summary)+"</p><h2>Model-inferred sentiment</h2><p>"+esc(i.sentiment)+"</p>";
  const title=kind==="export-transcript"?"Full Interaction Transcript":"CRM Post-call Summary";
  const html="<html><head><meta charset='utf-8'></head><body><h1>"+title+"</h1>"+metadata+(kind==="export-transcript"?transcript:summary)+"<p><small>SYNTHETIC PROTOTYPE DOCUMENT. Production will generate native DOCX. This document is a transcription/summary artifact, not a QA assessment.</small></p></body></html>";
