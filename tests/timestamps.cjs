@@ -56,7 +56,7 @@ const uiContext=vm.createContext({
  localStorage:{getItem(){return null;},setItem(){}},
  setTimeout(){return 1;},clearTimeout(){},console
 });
-for(const file of ["sample-data.js","transcript-contract.js","manual-audio.js"])
+for(const file of ["sample-data.js","transcript-contract.js","conversation-signals.js","manual-audio.js"])
  vm.runInContext(fs.readFileSync(file,"utf8"),uiContext,{filename:file});
 uiContext.window.SEED.interactions[0].segments[0].endMs=null;
 vm.runInContext(fs.readFileSync("app.js","utf8"),uiContext,{filename:"app.js"});
