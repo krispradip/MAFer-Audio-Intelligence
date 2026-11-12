@@ -6,9 +6,11 @@ Standalone, bilingual contact-centre **audio transcription and interaction intel
 
 ## Scope
 
-- **Operations Console:** end-to-end processing counts and statuses for transcription, AI summarization, CRM update, CRM confirmation, and QA handoff; stage-specific exceptions.
-- **Interaction Explorer:** searchable full transcript, CRM summary, language, issues, sentiment, agent EQ/reasoning observations, ticket mapping, downloadable Word-compatible preview documents, and QA handoff status.
-- **Configuration Console:** independently configured speech-to-text service, AI summarization service and enterprise connections, with simulated health/error diagnostics and auditable demo configuration changes.
+- **Operations Console:** end-to-end processing counts and statuses for transcription, AI summarization, CRM update, CRM confirmation, and S3 output readiness; stage-specific exceptions.
+- **Interaction Explorer:** searchable full transcript, CRM summary, language, issues, sentiment, agent EQ/reasoning observations, ticket mapping, downloadable Word-compatible preview documents, and version-pinned EQ/problem-solving evidence.
+- **Configuration Console:** independently configured speech-to-text service, AI summarization service and enterprise connections, with simulated health/error diagnostics and browser-local draft settings.
+- **Agent EQ Framework:** six editable behavioural dimensions, positive evidence, exclusions, English/Arabic rules, enterprise baseline, BU overrides, version history, and draft/publish simulation.
+- **Problem-Solving Framework:** six editable reasoning and resolution dimensions, evidence requirements, enterprise baseline, BU overrides, and version history.
 - **AI Usage & Diagnostics:** audio minutes, LLM tokens, retries, provider error codes, request IDs and stage-specific diagnostics.
 - **Demo personas:** Platform Admin and a business-unit restricted BU Lead. These are UI-only simulations; real authorization must be enforced on a backend.
 
@@ -26,7 +28,7 @@ Standalone, bilingual contact-centre **audio transcription and interaction intel
 
 Open `index.html` in a modern browser. No dependencies or build tooling required.
 
-The mockup's configuration and some simulated interaction actions are stored in browser localStorage only. Use *Reset demo* to restore the sample dataset. Do not treat localStorage as production persistence.
+Framework drafts, published demo versions and some non-secret configuration are stored in browser localStorage only. To reset the demo frameworks, clear this site's browser storage. Do not treat localStorage as production persistence or a shared approval workflow.
 
 ## Files
 
@@ -34,11 +36,13 @@ The mockup's configuration and some simulated interaction actions are stored in 
 - `styles.css` — responsive visual design
 - `sample-data.js` — synthetic interactions and seeded configuration
 - `app.js` — UI rendering, filtering, simulated actions, diagnostics, document exports
+- `frameworks.js` — configurable EQ/problem-solving framework editors, draft/version history, BU overrides and evidence display
+- `tests/smoke.cjs` — Node.js startup, framework, versioning, bilingual evidence and role smoke tests
 - `docs/ARCHITECTURE.md` — production integration boundaries and future build plan
 
 ## Production integration (not included)
 
-Corporate AWS EKS, Genesys recording export to S3 + processing queue, configurable English/Arabic speech engine, APIM-based summarization, PostgreSQL, Vault and IAM, CRM ticket reconciliation, QA.MAFer.AI transcript API, authorization, audit, observability, security, retention, and approved S3 DOCX storage.
+Corporate AWS EKS, Genesys recording export to S3 + processing queue, configurable English/Arabic speech engine, APIM-based summarization, PostgreSQL, Vault and IAM, CRM ticket reconciliation, read-only QA.MAFer.AI S3 ingestion, authorization, audit, observability, security, retention, and approved S3 DOCX storage.
 
 The frontend cannot determine if a provider is actually healthy by testing only from the browser: production connectivity tests and health metrics must run on a secure backend.
 
@@ -48,7 +52,7 @@ The GitHub repository was created with **public** visibility as observed when fi
 ## Current preview limitations
 
 - This version creates **Word-compatible .doc** demo downloads, not native **.docx**. Native DOCX generation and S3 folder writing belong in the production backend.
-- This is a source-code build, **not yet a hosted site**. Browser functionality and CI workflow execution have not yet been confirmed in this chat.
+- The project owner has provided a Cloudflare Workers preview URL. The deployed revision and CI workflow result must be verified separately; source commits alone do not establish live deployment.
 - The demo role selector is not real authentication. Production needs backend-enforced RBAC.
 
 
@@ -69,6 +73,14 @@ Target test flow:
 3. Execute the independent AI summarization service to extract sentiment, agent reasoning/EQ observations, issues, summary and next steps.
 4. Produce two Word documents and JSON artifacts.
 5. Simulate or sandbox-test CRM ticket correlation, update, acknowledgment, timeout and retry/reconciliation.
-6. Expose transcript JSON to QA.MAFer.AI without incorporating official QA scoring into this standalone service.
+6. Publish completed transcript JSON and a versioned manifest to S3 for independent read-only consumption by QA.MAFer.AI, without incorporating official QA scoring into this standalone service.
 
 The committed frontend **currently simulates** the transcription, summary and connection responses. Real audio upload, actual model invocation and native DOCX export are future implementation items. GitHub-to-Cloudflare auto-deployment has not been established by this repository's current code.
+
+## Intelligence framework configuration
+
+Platform Admins can open **Agent EQ Framework** and **Problem-Solving Framework** from the sidebar under **Intelligence Configuration**. Each starts with an editable enterprise baseline and six dimensions. Select a BU to inherit the baseline or create a BU-specific override. Dimensions can be enabled/disabled, added or removed; definitions, positive indicators, guardrails, evidence rules and bilingual instructions can be edited. **Save draft** and **Publish demo version** use localStorage and keep a version history for this browser only.
+
+Each sample interaction's structured observations are **synthetic and pinned to framework v1.0**. Editing or publishing a new framework does not silently re-score historical interactions. Observations use **Observed / Not Observed / Not Assessable**, evidence timestamps and original-language dialogue when available. No numeric IQ or EQ scores are produced; formal QA remains in QA.MAFer.AI. BU Leads can review these observations in their own interaction view but cannot edit frameworks or download JSON.
+
+**Production gap:** persist immutable published framework versions in the Audio Intelligence database, enforce Admin/BU governance and approval, pin the chosen version to each summarization job, and write evidence/version metadata to structured S3 output. The current summarization provider does not yet execute these framework definitions.
