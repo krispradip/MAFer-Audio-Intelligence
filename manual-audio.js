@@ -21,7 +21,7 @@ function update(field,value,role,data,leadBU="VOX"){
  if(!Object.prototype.hasOwnProperty.call(form,field))return {};
  const v=String(value??"");
  if(field==="mode"){if(!["new","retry"].includes(v))return {};form.mode=v;if(v==="retry"&&!failed(role,data,leadBU).some(i=>i.id===form.retryId))form.retryId=failed(role,data,leadBU)[0]?.id||"";}
- else if(field==="bu"){if(role!=="admin"||!BUS.includes(v))return {message:"BU access restricted."};form.bu=v;}
+ else if(field==="bu"){if(role!=="admin"||!BUS.includes(v))return {message:"BU access restricted."};const previous=form.bu;form.bu=v;if(form.brand===previous)form.brand=v;}
  else if(field==="retryId"){if(!failed(role,data,leadBU).some(i=>i.id===v))return {message:"Failed interaction not available."};form.retryId=v;}
  else if(field==="language"){if(!LANG.includes(v))return {};form.language=v;}
  else form[field]=v.slice(0,160);
@@ -82,7 +82,7 @@ async function submit(role,data,leadBU="VOX"){
  }catch(e){stage.status="staged";return {render:true,message:"Processing not submitted: "+String(e.message||"service unavailable").slice(0,120)};}
 }
 function render(role,data,leadBU="VOX"){
- if(role==="lead")form.bu=leadBU;
+ if(role==="lead"&&form.bu!==leadBU){if(!form.brand.trim()||form.brand===form.bu)form.brand=leadBU;form.bu=leadBU;}
  const failures=failed(role,data,leadBU);
  if(form.mode==="retry"&&!failures.some(i=>i.id===form.retryId))form.retryId=failures[0]?.id||"";
  const retry=failures.find(i=>i.id===form.retryId);
