@@ -85,7 +85,13 @@ function buildOutput(interaction){
   conversationSignals:observations(interaction,"conversationSignals"),
   interactionReferences:observations(interaction,"interactionReferences"),
   interactionMetadata:{genesysConversationId:interaction.id,agent:interaction.agent||null,bu:interaction.bu||null,brand:interaction.brand||null,market:interaction.market||null,language:interaction.language||null,duration:interaction.duration||null,crmTicketId:interaction.ticket||null,recordingReference:interaction.recordingRef||null},
-  processing:{transcription:trans,summarization:interaction.sum,crmUpdate:interaction.crm,crmAcknowledgement:interaction.ack,error:interaction.error||window.MAFerTranscript.issue(interaction)?.code||null,transcriptReady:transReady,summaryReady:sumReady}
+  processing:{
+   transcription:trans,summarization:interaction.sum,crmUpdate:interaction.crm,crmAcknowledgement:interaction.ack,
+   error:interaction.error||window.MAFerTranscript.issue(interaction)?.code||null,
+   transcriptReady:transReady,summaryReady:sumReady,
+   manualRun:interaction.manualRun?{status:interaction.manualRun.status,attempt:interaction.manualRun.attempt,fileName:interaction.manualRun.fileName}:null,
+   s3Outputs:{transcript:interaction.transcriptS3Uri||null,summary:interaction.summaryS3Uri||null,manifest:interaction.manifestS3Uri||null}
+  }
  };
 }
 window.MAFerSignals={VERSION,PROMPT_VERSION,LABELS,CATEGORIES,FIXED_INSTRUCTIONS,customerClose,observations,buildOutput};
