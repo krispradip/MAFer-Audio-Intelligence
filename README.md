@@ -8,7 +8,7 @@ Standalone, bilingual contact-centre **audio transcription and interaction intel
 
 - **Operations Console:** end-to-end processing counts and statuses for transcription, AI summarization, CRM update, CRM confirmation, and S3 output readiness; stage-specific exceptions.
 - **Manual Audio Upload:** browser-local file selection, audio playback, new interaction staging and failed-run retry staging (MP3/WAV/M4A/AAC/FLAC/OGG/WebM, up to 50 MB). Actual transcription requires a secure backend.
-- **Interaction Explorer:** searchable full transcript, factual CRM summary, language, distinct issues, model-inferred sentiment, ticket mapping and downloadable Word-compatible preview documents.
+- **Interaction Explorer:** searchable timestamped transcript with start/end times per speaker segment, factual CRM summary, language, distinct issues, model-inferred sentiment, ticket mapping and downloadable Word-compatible preview documents.
 - **Configuration Console:** independently configured speech-to-text service, AI summarization service and enterprise connections, with simulated health/error diagnostics and browser-local draft settings.
 - **Intelligence Configuration:** read-only overview of the selected transcription and summarization engines, supported languages, speaker identification, prompt version and output schema. BU Leads can view these settings without seeing endpoints, credentials or editable controls.
 - **AI Usage & Diagnostics:** audio minutes, LLM tokens, retries, provider error codes, request IDs and stage-specific diagnostics.
@@ -18,7 +18,7 @@ Standalone, bilingual contact-centre **audio transcription and interaction intel
 
 1. The Genesys **Conversation ID** is the interaction correlation key. The CRM owns ticket IDs and the mapping from Conversation ID to one or more tickets.
 2. This product owns transcription and interaction intelligence; **QA.MAFer.AI independently owns quality scoring**.
-3. Full transcripts preserve English, Arabic and bilingual speech. CRM summaries are provided in configured languages.
+3. Every speech segment must have STT-generated audio-relative start/end timestamps in milliseconds, a speaker label and original-language text. English, Arabic and bilingual speech are all subject to the same mandatory contract. CRM summaries are provided in configured languages.
 4. The summarization service extracts facts and clearly labels model-inferred sentiment. EQ, empathy, problem-solving, compliance and QA scoring belong exclusively to QA.MAFer.AI.
 5. Failures are independently tracked by stage. CRM acknowledgment timeout must be reconciled before retrying writes.
 6. The Word files are human-readable deliverables; **JSON/APIs** (once implemented) are for downstream CRM and QA consumption.
@@ -34,10 +34,12 @@ Some non-secret integration configuration is stored in browser localStorage only
 
 - `index.html` — page shell
 - `styles.css` — responsive visual design
-- `sample-data.js` — synthetic interactions and seeded configuration
+- `sample-data.js` — synthetic interactions with start/end timestamps and seeded configuration
+- `transcript-contract.js` — mandatory segment timing schema, validation, and completion gate (browser prototype only)
 - `app.js` — UI rendering, filtering, simulated actions, diagnostics, document exports
 - `manual-audio.js` — file validation, local audio playback, manual run staging and feature-gated same-origin submission
-- `tests/smoke.cjs` — Node.js startup, product-boundary, read-only intelligence configuration and BU access tests
+- `tests/smoke.cjs` — Node.js startup, product-boundary, timestamp display, read-only intelligence configuration and BU access tests
+- `tests/timestamps.cjs` — mandatory timing validation, completion gate and error cases
 - `docs/ARCHITECTURE.md` — production integration boundaries and future build plan
 
 ## Production integration (not included)
@@ -69,7 +71,7 @@ The personal sandbox is intended to process **synthetic English, Arabic and bili
 
 Target test flow:
 1. Upload or select a synthetic call recording; assign a mock Genesys Conversation ID.
-2. Execute the approved speech-to-text service and capture the full time-aligned transcript.
+2. Execute an approved speech-to-text service that provides per-segment start/end timestamps and speaker labels; reject results without valid time alignment.
 3. Execute the independent AI summarization service to extract contact reasons, distinct issues, stated actions, resolution status, next steps and model-inferred sentiment, without scoring agent behaviour.
 4. Produce two Word documents and JSON artifacts.
 5. Simulate or sandbox-test CRM ticket correlation, update, acknowledgment, timeout and retry/reconciliation.
@@ -77,13 +79,33 @@ Target test flow:
 
 The committed frontend **currently simulates** the transcription, summary and connection responses. Audio file selection, playback and local staging are implemented; actual transcription/model invocation and native DOCX export still require the backend. GitHub-to-Cloudflare auto-deployment has not been established by this repository's current code.
 
+## Mandatory transcription timestamps
+
+**Non-negotiable STT output contract:** Every spoken segment must contain `startMs` and `endMs` (integer milliseconds relative to recording start), `speaker` and `text` in the original language. Timestamps are produced by the transcription engine or a time-aligned STT adapter, **not guessed by the summarization LLM**. This requirement applies equally to English, Arabic and code-switched calls; it is not a QA scoring setting or a toggle in Config Console.
+
+```json
+{
+  "transcriptSchemaVersion": "1.0",
+  "segments": [
+    {"startMs": 5000, "endMs": 12000, "speaker": "Customer", "text": "I need help with my booking."},
+    {"startMs": 16000, "endMs": 26000, "speaker": "Agent", "text": "Let me check the booking."}
+  ]
+}
+```
+
+Completion requires at least one valid speech segment, integer nonnegative times, `endMs > startMs`, ordered start times, end times within known recording duration, and nonempty speaker/text fields. Overlapping speaker turns are allowed. If a recording is genuinely silent, it needs an explicit **no-speech** outcome rather than a fabricated transcript or a false `completed` status.
+
+When timing is missing, invalid, out of order or outside the audio duration, the transcription must be marked failed/incomplete with a diagnostic code. It cannot be counted as completed, exported as a completed transcript, or published to S3/QA; downstream summary/CRM processing must wait for a valid transcript. A provider that cannot deliver timestamps is **not eligible** for production use.
+
+The prototype validates structural timestamp correctness, displays start/end time ranges, and blocks completion/readiness for invalid demo records. **It does not perform real STT or verify audio-to-text synchronization**. Production must enforce the same contract in the backend, verify time alignment against the actual recording and preserve the timestamps in DOCX/JSON/S3 artifacts.
+
 ## Intelligence Configuration (BU Lead read-only)
 
 The sidebar now provides **Intelligence Configuration** to both Platform Admin and BU Lead personas. It shows the selected Speech-to-Text engine and CRM Summary Intelligence engine, model/deployment identifiers, language capabilities, speaker identification, prompt version and output schema. It is a **read-only overview**, with no provider URLs, secret references, credential fields or editing controls. The Platform Admin retains full integration configuration in **Config Console**.
 
 This page shows browser-held **demo settings**, not verified live service health. BU Lead role switching is a preview feature, not authentication or backend RBAC. The displayed engine profiles are enterprise-level demo profiles; per-BU model overrides have not been implemented.
 
-**QA boundary:** the former Agent EQ Framework, Problem-Solving Framework and Evidence & Language Rules editor were removed from this audio product. Their behavioural scoring dimensions, evidence requirements, Not Assessable statuses and rubric/version governance belong in **QA.MAFer.AI**, not in transcription or CRM summarization. Audio Intelligence preserves original-language speech, speaker labels and timestamps as transcription artifacts; it does not grade agent performance.
+**QA boundary:** the former Agent EQ Framework, Problem-Solving Framework and Evidence & Language Rules editor were removed from this audio product. Their behavioural scoring dimensions, evidence requirements, Not Assessable statuses and rubric/version governance belong in **QA.MAFer.AI**, not in transcription or CRM summarization. Audio Intelligence preserves original-language speech, speaker labels and **mandatory** audio-relative start/end timestamps as transcription artifacts; it does not grade agent performance.
 
 ## Manual audio upload and controlled recovery
 
