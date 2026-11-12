@@ -12,3 +12,72 @@ window.SEED = {
  services:{stt:{name:"Primary Speech Engine",provider:"Amazon Transcribe",model:"AWS managed speech service",region:"me-central-1",connection:"stt-primary",language:"English + Gulf Arabic / multilingual",speaker:"Channel ID when available",timeout:"120",retries:"2",status:"healthy"},sum:{name:"Summary Intelligence",provider:"Corporate OpenAI via APIM",model:"gpt-4o",region:"Corporate APIM",connection:"apim-summary",language:"English + original language",schema:"v1",prompt:"v1.3",tokens:"2500",timeout:"95",retries:"2",status:"healthy"}},
  connections:[{name:"Genesys recording ingestion",kind:"Source",profile:"genesys-s3-ingestion",status:"healthy",note:"S3 export and event queue · demo"},{name:"CRM ticket updates",kind:"Destination",profile:"crm-c4c-approved",status:"degraded",note:"Mapping and acknowledgment require CRM integration"},{name:"QA.MAFer.AI handoff",kind:"Destination",profile:"qa-transcript-api",status:"healthy",note:"Transcript JSON downstream; separate scoring"},{name:"DOCX / JSON storage",kind:"Storage",profile:"audio-intelligence-outputs",status:"healthy",note:"BU / Brand / Market / Date / Conversation ID"}]
 };
+
+/* Non-sensitive SAMPLE configuration. No API credentials are included. */
+window.SEED.serviceProfiles = {
+  stt: [{
+    id: "stt-main", active: true, name: "Primary Speech-to-Text",
+    service: "Speech API", endpoint: "https://stt-demo.example.invalid/v1/audio/transcriptions",
+    model: "speech-deployment-id", auth: "Bearer token", header: "Authorization",
+    secretRef: "demo/audio/stt-primary", region: "UAE", healthPath: "/health",
+    language: "English + Arabic (bilingual)", speakers: "Identify speakers",
+    timeout: "120", retries: "2"
+  }],
+  sum: [{
+    id: "sum-main", active: true, name: "Post-call Summary AI",
+    service: "OpenAI-compatible chat API", endpoint: "https://ai-demo.example.invalid/v1/chat/completions",
+    model: "gpt-4o", auth: "Bearer token", header: "Authorization",
+    secretRef: "demo/audio/summary-primary", region: "UAE", healthPath: "/health",
+    language: "English + original language", prompt: "v1.3", schema: "v1",
+    instructions: "Summarize facts only. Extract each distinct customer issue, reason for contact, actions, resolution status, next steps, sentiment and evidence-backed agent empathy and problem-solving observations. Never fabricate system actions.",
+    tokens: "2500", timeout: "95", retries: "2"
+  }]
+};
+window.SEED.connectionProfiles = {
+  genesys: {
+    name:"Genesys recording ingestion",
+    mode:"AWS S3 recording export",
+    environment:"Genesys Cloud CX — test organisation",
+    sourceBucket:"maf-demo-genesys-recordings",
+    sourcePrefix:"recordings/",
+    region:"me-central-1",
+    queue:"https://sqs.me-central-1.amazonaws.com/000000000000/audio-demo-events",
+    auth:"AWS IAM role",clientId:"",
+    secretRef:"demo/genesys/recording-reader",
+    correlation:"conversationId"
+  },
+  crm: {
+    name:"CRM ticket updates",
+    system:"SAP C4C — test",
+    endpoint:"https://crm-demo.example.invalid",
+    lookupPath:"/v1/tickets/by-genesys-id/{conversationId}",
+    updatePath:"/v1/tickets/{ticketId}/summary",
+    acknowledgePath:"/v1/updates/{requestId}/status",
+    auth:"OAuth2 client credentials",clientId:"crm-demo-client",
+    secretRef:"demo/crm/connector",
+    correlation:"genesysConversationId",
+    policy:"Require confirmed CRM acknowledgment"
+  },
+  storage: {
+    name:"Generated transcription outputs",
+    bucket:"maf-demo-audio-intelligence",
+    prefix:"03_Completed",
+    region:"me-central-1",
+    folderPattern:"{BU}/{Brand}/{Market}/{YYYY}/{MM}/{DD}/{ConversationID}",
+    transcriptName:"transcript.docx",
+    summaryName:"summary.docx",
+    includeJSON:"Yes — CRM and QA machine data",
+    encryption:"SSE-KMS",
+    retention:"90",
+    auth:"AWS IAM role",
+    secretRef:"demo/audio/output-writer"
+  },
+  qa: {
+    name:"QA.MAFer.AI transcript handoff",
+    endpoint:"https://qa-demo.example.invalid",
+    handoffPath:"/api/v1/interactions/{conversationId}/transcript",
+    auth:"Bearer token",clientId:"",
+    secretRef:"demo/qa/transcript-publisher",
+    policy:"Deliver full transcript and evidence metadata only"
+  }
+};
