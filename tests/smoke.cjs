@@ -11,7 +11,7 @@ const elements=new Map(["#app","#nav","#crumb","#role","#sidebar","#menu","#toas
 const listeners={};
 const store=new Map();
 const context=vm.createContext({
- window:{},
+ window:{URL:{createObjectURL(){return "blob:demo-preview";},revokeObjectURL(){}}},
  document:{
   querySelector(id){return elements.get(id)||null;},
   addEventListener(name,handler){listeners[name]=handler;},
@@ -21,7 +21,7 @@ const context=vm.createContext({
  setTimeout(){return 1;},clearTimeout(){},
  console
 });
-for(const file of ["sample-data.js","frameworks.js","app.js"]){
+for(const file of ["sample-data.js","frameworks.js","manual-audio.js","app.js"]){
  vm.runInContext(fs.readFileSync(file,"utf8"),context,{filename:file});
 }
 const app=()=>elements.get("#app").innerHTML;
@@ -30,6 +30,7 @@ const fw=context.window.MAFerFrameworks;
 assert.ok(app().includes("Operations Console"),"Operations Console should render");
 assert.ok(nav().includes("Agent EQ Framework"),"Admin EQ navigation");
 assert.ok(nav().includes("Problem-Solving Framework"),"Admin reasoning navigation");
+assert.ok(nav().includes("Manual Audio Upload"),"Admin manual audio navigation");
 assert.ok(fw.render("eq").includes("Empathy &amp; acknowledgement"),"EQ dimension appears");
 assert.ok(fw.render("problem").includes("Diagnostic questioning"),"Reasoning dimension appears");
 assert.ok(fw.render("eq").includes("English + Arabic"),"Bilingual policy appears");
@@ -49,6 +50,8 @@ assert.ok(!fw.render("eq").includes("UNPUBLISHED_BASELINE_DRAFT"),"BU inheritanc
 assert.ok(fw.render("eq").includes("Create VOX override"),"BU inherits baseline until override");
 const override=fw.action("eq","override");
 assert.equal(override.render,true);
+fw.change("eq",{dataset:{fwField:"dimensions.0.name"},value:"UNPUBLISHED_VOX_DRAFT",type:"text"});
+assert.ok(!fw.render("eq",{role:"lead",bu:"VOX"}).includes("UNPUBLISHED_VOX_DRAFT"),"Lead cannot see unpublished BU override");
 fw.change("eq",{dataset:{fwField:"dimensions.0.name"},value:"Empathy in VOX",type:"text"});
 const buPublished=fw.action("eq","publish");
 assert.match(buPublished.message,/v1\.0/);
@@ -66,8 +69,44 @@ clickNav("interactions");
 assert.ok(app().includes("Framework-based agent observations"),"Interaction evidence rendered");
 assert.ok(app().includes("↓ JSON"),"Admin JSON export available");
 listeners.change({target:{id:"role",value:"lead",dataset:{}}});
-assert.ok(!nav().includes("Agent EQ Framework"),"BU Lead cannot navigate to framework config");
+assert.ok(nav().includes("Agent EQ Framework"),"BU Lead EQ navigation visible");
+assert.ok(nav().includes("Problem-Solving Framework"),"BU Lead problem-solving navigation visible");
+assert.ok(nav().includes("Manual Audio Upload"),"BU Lead manual audio navigation visible");
+assert.ok(!nav().includes("Config Console"),"BU Lead technical configuration hidden");
 assert.ok(!app().includes("↓ JSON"),"BU Lead JSON export hidden");
 assert.ok(app().includes("Framework-based agent observations"),"BU Lead can view evidence");
-console.log("Smoke tests passed: startup, EQ, reasoning, bilingual evidence, versions, BU overrides, permissions.");
+clickNav("eq-framework");
+assert.ok(app().includes("Empathy in VOX"),"Lead sees published BU EQ override");
+assert.ok(!app().includes('data-fw-action="publish"'),"Lead cannot publish frameworks");
+assert.ok(!app().includes('id="fw-scope"'),"Lead cannot switch BU scope");
+clickNav("problem-framework");
+assert.ok(app().includes("Diagnostic questioning"),"Lead sees problem-solving framework");
+assert.ok(!app().includes('data-fw-action="override"'),"Lead cannot create override");
+clickNav("manual");
+assert.ok(app().includes('id="manual-file"'),"Manual audio input renders");
+assert.ok(app().includes("VOX · Your business unit"),"Lead upload scoped to VOX");
+const manual=context.window.MAFerManualAudio;
+assert.match(manual.chooseFile({name:"notes.txt",size:500,type:"text/plain"}).message,/Unsupported/);
+assert.match(manual.chooseFile({name:"huge.wav",size:60*1024*1024,type:"audio/wav"}).message,/50 MB/);
+const sampleAudio={name:"vox-demo.wav",size:102400,type:"audio/wav"};
+listeners.change({target:{id:"manual-file",files:[sampleAudio],dataset:{}}});
+assert.ok(app().includes("blob:demo-preview"),"Selected audio preview shown");
+function manualClick(action){
+ listeners.click({target:{closest(sel){return sel==="[data-manual-action]"?{dataset:{manualAction:action}}:null;}}});
+}
+manualClick("stage");
+assert.ok(app().includes("Staged locally"),"Manual audio staged in browser");
+manualClick("open");
+assert.ok(app().includes("Manual upload"),"Manual interaction visible in Explorer");
+assert.ok(app().includes("Transcript unavailable"),"Manual upload does not invent a transcript");
+const failedVox="e812a492-206c-4d32-86cd-a0f000000004";
+listeners.click({target:{closest(sel){return sel==="[data-open]"?{dataset:{open:failedVox}}:null;}}});
+assert.ok(app().includes("Upload audio to retry"),"Failed interaction offers manual retry");
+listeners.click({target:{closest(sel){return sel==="[data-action]"?{dataset:{action:"manual-retry:"+failedVox}}:null;}}});
+assert.ok(app().includes("Retrying"),"Retry mode prefilled");
+listeners.change({target:{id:"manual-file",files:[sampleAudio],dataset:{}}});
+manualClick("stage");
+assert.ok(app().includes(failedVox),"Retry retains Genesys Conversation ID");
+assert.ok(app().includes("Staged locally"),"Retry staged without false success");
+console.log("Smoke tests passed: navigation, bilingual evidence, versioned frameworks, BU permissions, manual upload and retry.");
 })();
