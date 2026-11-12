@@ -3,7 +3,15 @@
 (function conversationSignals(){
 "use strict";
 const LABELS=new Set(["Happy","Unhappy","Neutral","Unclear"]);
-const EQ_CUES=Object.freeze(["Empathy","Active listening","Emotional acknowledgement","Patience","Reassurance","Composure"]);
+const EQ_GUIDANCE=Object.freeze([
+ {cue:"Empathy",lookFor:"Acknowledges the customer's difficulty or feelings without minimizing them."},
+ {cue:"Active listening",lookFor:"Reflects the customer's stated concern or asks clarifying questions; do not assume audio-only behaviours from text."},
+ {cue:"Emotional acknowledgement",lookFor:"Recognizes the customer's expressed worry, frustration or other feeling."},
+ {cue:"Patience",lookFor:"Gives the customer space to explain and responds without rushing; audio cues require audio evidence."},
+ {cue:"Reassurance",lookFor:"Explains credible next steps without promising an unverified outcome."},
+ {cue:"Composure",lookFor:"Maintains respectful language under pressure; vocal calmness requires audio evidence."}
+]);
+const EQ_CUES=Object.freeze(EQ_GUIDANCE.map(item=>item.cue));
 function validSegment(interaction,index,speaker){
  const segments=interaction?.segments;
  if(!Array.isArray(segments)||!Number.isSafeInteger(index)||index<0||index>=segments.length)return null;
@@ -34,5 +42,5 @@ function eqHighlights(interaction){
  return observations.filter(item=>item&&EQ_CUES.includes(item.cue)&&typeof item.note==="string"&&item.note.trim()&&validSegment(interaction,item.segmentIndex,"Agent"))
   .map(item=>({cue:item.cue,note:item.note.trim(),evidence:validSegment(interaction,item.segmentIndex,"Agent")}));
 }
-window.MAFerSignals={customerClose,eqHighlights,EQ_CUES,LABELS:Array.from(LABELS)};
+window.MAFerSignals={customerClose,eqHighlights,EQ_CUES,EQ_GUIDANCE,LABELS:Array.from(LABELS)};
 })();
