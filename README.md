@@ -8,7 +8,7 @@ Standalone, bilingual contact-centre **audio transcription and interaction intel
 
 - **Operations Console:** end-to-end processing counts and statuses for transcription, AI summarization, CRM update, CRM confirmation, and S3 output readiness; stage-specific exceptions.
 - **Manual Audio Upload:** browser-local file selection, audio playback, new interaction staging and failed-run retry staging (MP3/WAV/M4A/AAC/FLAC/OGG/WebM, up to 50 MB). Actual transcription requires a secure backend.
-- **Interaction Explorer:** searchable timestamped transcript with start/end times per speaker segment, factual CRM summary, language, distinct issues, model-inferred sentiment, ticket mapping and downloadable Word-compatible preview documents.
+- **Interaction Explorer:** searchable timestamped transcript with start/end times per speaker segment, factual CRM summary, language, distinct issues, evidence-backed customer closing sentiment (Happy/Unhappy/Neutral/Unclear), descriptive EQ highlights (not scored), ticket mapping and downloadable Word-compatible preview documents.
 - **Configuration Console:** independently configured speech-to-text service, AI summarization service and enterprise connections, with simulated health/error diagnostics and browser-local draft settings.
 - **Intelligence Configuration:** read-only overview of the selected transcription and summarization engines, supported languages, speaker identification, prompt version and output schema. BU Leads can view these settings without seeing endpoints, credentials or editable controls.
 - **AI Usage & Diagnostics:** audio minutes, LLM tokens, retries, provider error codes, request IDs and stage-specific diagnostics.
@@ -19,7 +19,7 @@ Standalone, bilingual contact-centre **audio transcription and interaction intel
 1. The Genesys **Conversation ID** is the interaction correlation key. The CRM owns ticket IDs and the mapping from Conversation ID to one or more tickets.
 2. This product owns transcription and interaction intelligence; **QA.MAFer.AI independently owns quality scoring**.
 3. Every speech segment must have STT-generated audio-relative start/end timestamps in milliseconds, a speaker label and original-language text. English, Arabic and bilingual speech are all subject to the same mandatory contract. CRM summaries are provided in configured languages.
-4. The summarization service extracts facts and clearly labels model-inferred sentiment. EQ, empathy, problem-solving, compliance and QA scoring belong exclusively to QA.MAFer.AI.
+4. The summarization service extracts factual CRM content, whether the customer left happy, unhappy, neutral or unclear, and optional timestamp-linked EQ observations (what to look for, not QA criteria). Formal EQ grading, problem-solving evaluation, compliance and all QA scoring belong exclusively to QA.MAFer.AI.
 5. Failures are independently tracked by stage. CRM acknowledgment timeout must be reconciled before retrying writes.
 6. The Word files are human-readable deliverables; **JSON/APIs** (once implemented) are for downstream CRM and QA consumption.
 7. Sensitive credentials stay in corporate Vault; the admin UI should only reference DevOps-approved connections.
@@ -36,10 +36,12 @@ Some non-secret integration configuration is stored in browser localStorage only
 - `styles.css` — responsive visual design
 - `sample-data.js` — synthetic interactions with start/end timestamps and seeded configuration
 - `transcript-contract.js` — mandatory segment timing schema, validation, and completion gate (browser prototype only)
+- `conversation-signals.js` — customer closing sentiment and evidence-backed non-scored EQ observation boundary
 - `app.js` — UI rendering, filtering, simulated actions, diagnostics, document exports
 - `manual-audio.js` — file validation, local audio playback, manual run staging and feature-gated same-origin submission
 - `tests/smoke.cjs` — Node.js startup, product-boundary, timestamp display, read-only intelligence configuration and BU access tests
 - `tests/timestamps.cjs` — mandatory timing validation, completion gate and error cases
+- `tests/conversation-signals.cjs` — customer closing sentiment and EQ look-for boundaries, with no QA scores
 - `docs/ARCHITECTURE.md` — production integration boundaries and future build plan
 
 ## Production integration (not included)
@@ -72,7 +74,7 @@ The personal sandbox is intended to process **synthetic English, Arabic and bili
 Target test flow:
 1. Upload or select a synthetic call recording; assign a mock Genesys Conversation ID.
 2. Execute an approved speech-to-text service that provides per-segment start/end timestamps and speaker labels; reject results without valid time alignment.
-3. Execute the independent AI summarization service to extract contact reasons, distinct issues, stated actions, resolution status, next steps and model-inferred sentiment, without scoring agent behaviour.
+3. Execute the independent AI summarization service to extract contact reasons, distinct issues, stated actions, resolution status, next steps, customer closing sentiment and optional descriptive EQ cues, without scoring agent behaviour.
 4. Produce two Word documents and JSON artifacts.
 5. Simulate or sandbox-test CRM ticket correlation, update, acknowledgment, timeout and retry/reconciliation.
 6. Publish completed transcript JSON and a versioned manifest to S3 for independent read-only consumption by QA.MAFer.AI, without incorporating official QA scoring into this standalone service.
@@ -99,13 +101,23 @@ When timing is missing, invalid, out of order or outside the audio duration, the
 
 The prototype validates structural timestamp correctness, displays start/end time ranges, and blocks completion/readiness for invalid demo records. **It does not perform real STT or verify audio-to-text synchronization**. Production must enforce the same contract in the backend, verify time alignment against the actual recording and preserve the timestamps in DOCX/JSON/S3 artifacts.
 
+## Customer sentiment at call close and EQ look-fors
+
+These are **conversation intelligence signals**, not QA assessment parameters.
+
+- **Customer closing sentiment** answers only: *Did the customer leave the call happy?* Allowed outputs: **Happy**, **Unhappy**, **Neutral**, or **Unclear**. Use the customer's own closing statements and the original STT segment timestamps as evidence. Do not treat a polite goodbye, a solved ticket, or the agent's friendliness as proof of customer happiness. When closing evidence is absent, return **Unclear**; when summarization has not completed, return **Not available**. The prototype shows explicit synthetic closing dialogue for its Happy/Unhappy/Neutral examples.
+- **EQ look-fors** identify what to notice in the agent's dialogue: **empathy, active listening, emotional acknowledgement, patience, reassurance, composure**. Include only evidence-backed, descriptive highlights, with the original speaker text and timestamps. A missing observation is **not** a failure. Do not assign scores, grades, weights, pass/fail flags or negative findings, and do not make any official agent performance judgment.
+- **QA.MAFer.AI** remains the sole owner of rubric-based QA evaluation and agent scoring. It can consume the original timestamped transcript independently; this audio product does not issue QA assessment results.
+
+The Config Console lets Platform Admin maintain the summary prompt's customer sentiment guidance and EQ observational guidance. Intelligence Configuration exposes the fixed outcome question, outcome labels and EQ look-fors to both Admin and BU Lead in read-only form. This is still a synthetic frontend; production must validate LLM output against transcript evidence on the backend.
+
 ## Intelligence Configuration (BU Lead read-only)
 
 The sidebar now provides **Intelligence Configuration** to both Platform Admin and BU Lead personas. It shows the selected Speech-to-Text engine and CRM Summary Intelligence engine, model/deployment identifiers, language capabilities, speaker identification, prompt version and output schema. It is a **read-only overview**, with no provider URLs, secret references, credential fields or editing controls. The Platform Admin retains full integration configuration in **Config Console**.
 
 This page shows browser-held **demo settings**, not verified live service health. BU Lead role switching is a preview feature, not authentication or backend RBAC. The displayed engine profiles are enterprise-level demo profiles; per-BU model overrides have not been implemented.
 
-**QA boundary:** the former Agent EQ Framework, Problem-Solving Framework and Evidence & Language Rules editor were removed from this audio product. Their behavioural scoring dimensions, evidence requirements, Not Assessable statuses and rubric/version governance belong in **QA.MAFer.AI**, not in transcription or CRM summarization. Audio Intelligence preserves original-language speech, speaker labels and **mandatory** audio-relative start/end timestamps as transcription artifacts; it does not grade agent performance.
+**QA boundary:** rubric-driven Agent EQ assessment, Problem-Solving assessment, compliance, evidence grading, weights, pass/fail outcomes and performance scores belong in **QA.MAFer.AI**. Audio Intelligence **does** include EQ look-fors as descriptive, timestamp-linked conversation observations and customer sentiment at call close; neither is a QA criterion or grade. Audio Intelligence also preserves original-language speech, speaker labels and **mandatory** audio-relative start/end timestamps.
 
 ## Manual audio upload and controlled recovery
 
