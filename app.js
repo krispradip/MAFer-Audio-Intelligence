@@ -80,12 +80,17 @@ const configSections=[
 ];
 const fieldsBySection={
  stt:[["name","Connection name"],["service","API type / service"],["endpoint","API endpoint URL"],["model","Transcription model / deployment"],["auth","Authentication method"],["header","Credential header"],["secretRef","Vault secret reference"],["region","Region"],["healthPath","Health-check path"],["language","Languages (English / Arabic)"],["speakers","Speaker identification"],["timeout","Timeout (seconds)"],["retries","Retry attempts"]],
- sum:[["name","Connection name"],["service","API type / service"],["endpoint","API endpoint URL"],["model","Summary model / deployment"],["auth","Authentication method"],["header","Credential header"],["secretRef","Vault secret reference"],["region","Region"],["healthPath","Health-check path"],["language","Summary language"],["prompt","Prompt version"],["schema","Response schema"],["instructions","Summary extraction instructions"],["sentimentGuidance","Customer closing sentiment guidance"],["eqGuidance","EQ observational look-fors (not QA)"],["tokens","Max output tokens"],["timeout","Timeout (seconds)"],["retries","Retry attempts"]],
+ sum:[["name","Connection name"],["service","API type / service"],["endpoint","API endpoint URL"],["model","Summary model / deployment"],["auth","Authentication method"],["header","Credential header"],["secretRef","Vault secret reference"],["region","Region"],["healthPath","Health-check path"],["language","Summary language"],["tokens","Max output tokens"],["timeout","Timeout (seconds)"],["retries","Retry attempts"]],
  genesys:[["name","Connection name"],["mode","Recording ingestion method"],["environment","Genesys organisation / environment"],["sourceBucket","Source S3 bucket"],["sourcePrefix","Recording object prefix"],["region","AWS region"],["queue","SQS event queue URL"],["auth","Authentication method"],["clientId","Client ID (if applicable)"],["secretRef","Vault / IAM reference"],["correlation","Genesys correlation field"]],
  crm:[["name","Connection name"],["system","CRM platform"],["endpoint","CRM base API URL"],["lookupPath","Ticket lookup by Genesys Conversation ID"],["updatePath","Post-call summary update API path"],["acknowledgePath","Update acknowledgment / reconciliation path"],["auth","Authentication method"],["clientId","OAuth client ID"],["secretRef","Vault secret reference"],["correlation","Conversation ID mapping field"],["policy","CRM acknowledgment policy"]],
  storage:[["name","Connection name"],["bucket","Destination S3 bucket"],["prefix","Root output folder"],["region","AWS region"],["folderPattern","Subfolder pattern"],["transcriptName","Full transcript Word filename"],["summaryName","Post-call summary Word filename"],["includeJSON","Machine-readable JSON output"],["encryption","Encryption"],["retention","Retention (days)"],["auth","Authentication method"],["secretRef","Vault / IAM reference"]]
 };
 const getConfig=()=>cfg==="stt"||cfg==="sum"?(serviceProfiles[cfg].find(p=>p.id===selectedProfile[cfg])||serviceProfiles[cfg][0]):connectionProfiles[cfg];
+function cleanServiceSettings(){
+ for(const profile of serviceProfiles.sum){
+  for(const key of ["instructions","sentimentGuidance","eqGuidance","prompt","schema"])delete profile[key];
+ }
+}
 function config(){
  const active=getConfig();
  const tabs='<div class="config-tabs">'+configSections.map(([key,label])=>'<button data-cfg="'+key+'" class="'+(cfg===key?"active":"")+'">'+label+'</button>').join("")+'</div>';
@@ -103,15 +108,14 @@ function config(){
  const secretKey=cfg+":"+(active?.id||"main");
  const controls=fieldsBySection[cfg].map(([key,label])=>{
    const value=active?.[key]??"";
-   const large=["instructions","sentimentGuidance","eqGuidance"].includes(key);
-   const input=large?'<textarea rows="5" data-setting="'+cfg+'.'+key+'">'+esc(value)+'</textarea>':'<input data-setting="'+cfg+'.'+key+'" value="'+esc(value)+'" autocomplete="off"/>';
+   const input='<input data-setting="'+cfg+'.'+key+'" value="'+esc(value)+'" autocomplete="off"/>';
    return '<div class="field"><label>'+esc(label)+'</label>'+input+'</div>';
  }).join("");
  const authSection='<div class="credential-panel"><h3>Credentials & authentication</h3><p class="hint">For a real integration, credentials must be submitted to a secure backend and stored in Vault. This prototype never saves or sends the secret.</p><div class="form-grid"><div class="field"><label>API key / client secret (masked, session-only)</label><input id="credential-entry" type="password" placeholder="Enter key for secure backend connection" autocomplete="new-password" value=""/><small>Not saved to browser storage, GitHub or a service</small></div><div class="field"><label>Credential status</label><div class="health-box">'+(credentialDrafts[secretKey]?"Secret entered in this browser session · not connected":"No secret entered · Vault reference is configuration only")+'</div></div></div></div>';
  const test=connectionTests[cfg];
  const testState=test?(test.code==="200"?"healthy":"degraded"):"untested";
  const selector=isLLM?'<div class="profile-toolbar"><div class="field"><label>Configured service</label><select id="profile-select">'+profiles.map(p=>'<option value="'+esc(p.id)+'" '+(p.id===selectedProfile[cfg]?"selected":"")+'>'+esc(p.name)+'</option>').join("")+'</select></div>'+btn("+ Add service","add-profile","small")+'</div>':"";
- const explanation=cfg==="storage"?'<div class="callout">This is the destination for generated full-transcript and CRM-summary Word documents and structured JSON. QA.MAFer.AI independently reads transcript JSON from S3 using read-only IAM access; no QA handoff API is needed. CRM receives the summary through its API. Raw Genesys recordings stay in the ingestion/source location. The folder pattern groups outputs by BU, brand, market, date and Genesys Conversation ID.</div>':cfg==="crm"?'<div class="callout">The CRM creates ticket IDs. The connector looks up the CRM ticket using the Genesys Conversation ID, posts the summary and confirms the update. Timeouts require reconciliation before retry.</div>':cfg==="genesys"?'<div class="callout">Configure the Genesys recording source and event queue. The Genesys Conversation ID remains the correlation key; a CRM ticket ID is not assumed to exist in Genesys.</div>':cfg==="sum"?'<div class="callout">The summarization engine produces factual CRM fields, customer sentiment at the end of the call, and optional non-scored EQ observations. Closing sentiment must rely on customer speech; EQ look-fors are descriptive, not QA scorecard criteria. Do not infer satisfaction solely from issue resolution or a polite goodbye.</div>':'<div class="callout">Configure an API endpoint, model and credentials for this engine independently. English/Arabic speech, speaker labels and mandatory start/end timestamps must be validated using real sample audio before a provider can be approved. Timestamps are a fixed output requirement, not a configurable toggle. Never place an API key in source code.</div>';
+ const explanation=cfg==="storage"?'<div class="callout">This is the destination for generated full-transcript and CRM-summary Word documents and structured JSON. QA.MAFer.AI independently reads transcript JSON from S3 using read-only IAM access; no QA handoff API is needed. CRM receives the summary through its API. Raw Genesys recordings stay in the ingestion/source location. The folder pattern groups outputs by BU, brand, market, date and Genesys Conversation ID.</div>':cfg==="crm"?'<div class="callout">The CRM creates ticket IDs. The connector looks up the CRM ticket using the Genesys Conversation ID, posts the summary and confirms the update. Timeouts require reconciliation before retry.</div>':cfg==="genesys"?'<div class="callout">Configure the Genesys recording source and event queue. The Genesys Conversation ID remains the correlation key; a CRM ticket ID is not assumed to exist in Genesys.</div>':cfg==="sum"?'<div class="callout">Fixed output contract v3.0 (not editable): full transcript, CRM summary, customer closing sentiment, emotional indicators, conversation signals, interaction references, metadata, evidence and processing status. Extraction instructions are code-owned and versioned; only technical service settings can be configured. Audio-only observations require verified audio analysis.</div>':'<div class="callout">Configure an API endpoint, model and credentials for this engine independently. English/Arabic speech, speaker labels and mandatory start/end timestamps must be validated using real sample audio before a provider can be approved. Timestamps are a fixed output requirement, not a configurable toggle. Never place an API key in source code.</div>';
  return heading("Configuration Console","Add or edit your transcription and summary services, Genesys ingestion, CRM integration and output storage. Enterprise Connections is the final health overview.")+tabs+
  '<div class="layout"><section class="card"><div class="card-head"><div><h2>'+esc(configSections.find(x=>x[0]===cfg)[1])+' Configuration</h2><div class="sub">Editable integration settings · synthetic examples</div></div>'+tag(testState)+'</div><div class="form-section">'+selector+'<div class="form-grid">'+controls+'</div>'+authSection+explanation+'</div><div class="action-footer"><span class="hint">Drafts are non-secret browser settings only</span><div class="actions">'+btn("Save configuration","save-config")+btn("Test connection","test","primary small")+'</div></div></section><div><section class="card"><div class="card-head"><h2>Connection diagnostics</h2>'+tag(testState)+'</div><div class="form-section"><div class="health-box"><h3>'+(test?("Simulated HTTP "+test.code):"Not tested")+'</h3><p>'+esc(test?.message||"Configure this connection, then run a simulated test.")+'</p><p>Actual connectivity, authorization and credentials cannot be verified from this static prototype.</p></div><div class="field" style="margin-top:16px"><label>Simulated response code</label><select id="scenario">'+[["200","200 — Success"],["401","401 — Unauthorized"],["403","403 — Forbidden"],["429","429 — Rate limit"],["503","503 — Service unavailable"],["504","504 — Gateway timeout"]].map(([code,label])=>'<option value="'+code+'" '+(scenario===code?"selected":"")+'>'+label+'</option>').join("")+'</select></div><div style="margin-top:14px">'+btn("Run simulated check","test","primary small")+'</div></div></section><section class="card card-pad"><h2>Deployment boundary</h2><p class="hint">A secure backend must accept secrets over HTTPS, store them in corporate Vault, test each API and report real status codes. No API keys are sent by this browser mockup.</p><div class="callout">After configuring the services, open Enterprise Connections to review each service and its most recent test result.</div></section></div></div>';
 }
@@ -146,9 +150,9 @@ function exportSample(kind){
  const i=current();
  if(kind==="export-json"){
   if(role!=="admin")return toast("JSON export is restricted to Platform Admin.");
-  const blob=new Blob([JSON.stringify(i,null,2)],{type:"application/json"});
+  const blob=new Blob([JSON.stringify(signals.buildOutput(i),null,2)],{type:"application/json"});
   const url=URL.createObjectURL(blob),a=document.createElement("a");
-  a.href=url;a.download="sample_"+i.id+".json";a.click();
+  a.href=url;a.download="audio_intelligence_"+i.id+".json";a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
   return;
  }
@@ -156,7 +160,7 @@ function exportSample(kind){
  if(kind==="export-summary"&&(i.sum!=="completed"||transStatus(i)!=="completed"))return toast("Summary export requires a completed, timestamp-validated transcript.");
  const metadata="<p><b>Genesys Conversation ID:</b> "+esc(i.id)+"<br><b>CRM Ticket:</b> "+esc(i.ticket||"Not matched")+"<br><b>Agent:</b> "+esc(i.agent)+"<br><b>Business unit / brand:</b> "+esc(i.bu)+" / "+esc(i.brand)+"<br><b>Language:</b> "+esc(i.language)+"</p>";
  const transcript=(i.segments||[]).map(segment=>"<p><b>"+esc(timing.formatTimestamp(segment.startMs))+" – "+esc(timing.formatTimestamp(segment.endMs))+" · "+esc(segment.speaker)+":</b> "+esc(segment.text)+"</p>").join("");
- const summary="<h2>Reason for contact</h2><p>"+esc(i.reason)+"</p><h2>Customer issues ("+i.issues.length+")</h2><ul>"+i.issues.map(x=>"<li>"+esc(x.name)+" — "+esc(x.status)+"</li>").join("")+"</ul><h2>Post-call summary</h2><p>"+esc(i.summary)+"</p>"+conversationSignalsExport(i);
+ const summary="<h2>Reason for contact</h2><p>"+esc(i.reason)+"</p><h2>Customer issues ("+i.issues.length+")</h2><ul>"+i.issues.map(x=>"<li>"+esc(x.name)+" — "+esc(x.status)+"</li>").join("")+"</ul><h2>Post-call summary</h2><p>"+esc(i.summary)+"</p><h2>Resolution status</h2><p>"+esc(i.resolutionStatus||"Not verified")+"</p><h2>Actions stated</h2><p>"+esc(i.actions)+"</p><h2>Next steps</h2><p>"+esc(i.next)+"</p>"+conversationSignalsExport(i);
  const title=kind==="export-transcript"?"Full Interaction Transcript":"CRM Post-call Summary";
  const html="<html><head><meta charset='utf-8'></head><body><h1>"+title+"</h1>"+metadata+(kind==="export-transcript"?transcript:summary)+"<p><small>SYNTHETIC PROTOTYPE DOCUMENT. Production will generate native DOCX. This document is a transcription/summary artifact, not a QA assessment.</small></p></body></html>";
  const blob=new Blob(["\ufeff",html],{type:"application/msword"});
@@ -192,7 +196,8 @@ if(a==="simulate"){let n=data.length+1;data.unshift({...JSON.parse(JSON.stringif
 else if(a==="test"){const messages={"200":"Simulated connection accepted","401":"Authentication failed","403":"Permission denied","429":"Quota or rate limit","503":"Service unavailable","504":"Gateway timeout; outcome uncertain"};connectionTests[cfg]={code:scenario,message:messages[scenario],time:"Current session"};toast("Simulation only: HTTP "+scenario+" · "+messages[scenario]);render();}
 else if(a==="save-config"){
  try{
-  const safeServices=JSON.parse(JSON.stringify(serviceProfiles));
+  cleanServiceSettings();
+   const safeServices=JSON.parse(JSON.stringify(serviceProfiles));
   const safeConnections=JSON.parse(JSON.stringify(connectionProfiles));
   localStorage.setItem("mafer-audio-config-v2",JSON.stringify({serviceProfiles:safeServices,connectionProfiles:safeConnections}));
   toast("Non-secret configuration saved in this browser. Credentials were not saved.");
@@ -263,7 +268,12 @@ document.addEventListener("change",e=>{
  else if(t.id==="scenario")scenario=t.value;
  else if(t.id==="profile-select"){selectedProfile[cfg]=t.value;render();}
  else if(t.id==="credential-entry"){credentialDrafts[cfg+":"+(getConfig()?.id||"main")]=t.value?"entered":"";t.value="";render();}
- else if(t.dataset.setting){let parts=t.dataset.setting.split(".");let obj=(parts[0]==="stt"||parts[0]==="sum")?getConfig():connectionProfiles[parts[0]];if(obj){obj[parts[1]]=t.value;delete connectionTests[cfg];}}
+ else if(t.dataset.setting){
+   const parts=t.dataset.setting.split(".");
+   if(!fieldsBySection[parts[0]]?.some(([key])=>key===parts[1]))return;
+   const obj=(parts[0]==="stt"||parts[0]==="sum")?getConfig():connectionProfiles[parts[0]];
+   if(obj){obj[parts[1]]=t.value;delete connectionTests[cfg];}
+  }
 });
 document.addEventListener("input",e=>{
  const t=e.target;
@@ -279,5 +289,6 @@ document.addEventListener("input",e=>{
 });
 document.querySelector("#menu").addEventListener("click",()=>document.querySelector("#sidebar").classList.toggle("open"));
 try{let s=JSON.parse(localStorage.getItem("mafer-audio-config-v2")||"null");if(s?.serviceProfiles?.stt&&s?.serviceProfiles?.sum){Object.assign(serviceProfiles,s.serviceProfiles);Object.assign(connectionProfiles,s.connectionProfiles);}}catch(e){}
+cleanServiceSettings();
 render();
 })();
