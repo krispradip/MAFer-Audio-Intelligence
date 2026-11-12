@@ -22,7 +22,7 @@ const clone=x=>JSON.parse(JSON.stringify(x));
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dimensions=type=>TYPES[type].dimensions.map(([id,name,description,positive,caution])=>({id,name,description,positive,caution,enabled:true}));
 function snapshot(r){return {name:r.name,instructions:r.instructions,language:r.language,evidence:clone(r.evidence),dimensions:clone(r.dimensions)};}
-function initial(type){const r={scope:"All BUs",name:TYPES[type].name,language:"English + Arabic",instructions:TYPES[type].instructions,evidence:{requireQuote:true,requireTimestamp:true,notAssessable:true},dimensions:dimensions(type),publishedVersion:"1.0",status:"Published",history:[{version:"1.0",at:"Seeded enterprise baseline"}],baseVersion:null};r.publishedSnapshot=snapshot(r);return r;}
+function initial(type){const r={scope:"All BUs",name:TYPES[type].name,language:"English + Arabic",instructions:TYPES[type].instructions,evidence:{requireQuote:true,requireTimestamp:true,notAssessable:true},dimensions:dimensions(type),publishedVersion:"1.0",status:"Published",history:[{version:"1.0",at:"Seeded enterprise baseline"}],baseVersion:null};r.publishedSnapshot=snapshot(r);r.history[0].snapshot=clone(r.publishedSnapshot);return r;}
 const records={eq:{"All BUs":initial("eq")},problem:{"All BUs":initial("problem")}};
 try{
  const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"null");
@@ -38,7 +38,15 @@ try{
  }
 }catch(e){}
 let scope="All BUs";
-const active=type=>records[type][scope]||records[type]["All BUs"];
+const active=type=>{
+ const own=records[type][scope];
+ if(own)return own;
+ const baseline=records[type]["All BUs"];
+ if(baseline.status==="Draft"&&baseline.publishedSnapshot){
+  return {...clone(baseline.publishedSnapshot),scope:"All BUs",status:"Published",publishedVersion:baseline.publishedVersion,history:baseline.history,baseVersion:null};
+ }
+ return baseline;
+};
 const inherited=type=>scope!=="All BUs"&&!records[type][scope];
 const versionText=r=>r.publishedVersion==="0.0"?"Not published":"v"+r.publishedVersion;
 function persist(){localStorage.setItem(STORAGE_KEY,JSON.stringify(records));}
@@ -159,7 +167,7 @@ function action(type,actionName,index){
   const old=r.publishedVersion,parts=old.split(".").map(Number);
   const next=old==="0.0"?"1.0":`${Number.isFinite(parts[0])?parts[0]:1}.${Number.isFinite(parts[1])?parts[1]+1:1}`;
   r.publishedVersion=next;r.status="Published";r.publishedSnapshot=snapshot(r);
-  r.history.unshift({version:next,at:new Date().toLocaleString("en-GB")});
+  r.history.unshift({version:next,at:new Date().toLocaleString("en-GB"),snapshot:clone(r.publishedSnapshot)});
   try{persist();return {render:true,message:"Demo "+versionText(r)+" published in this browser. No live evaluation changed."};}
   catch(e){return {render:true,message:"Published in memory only; browser storage unavailable."};}
  }
