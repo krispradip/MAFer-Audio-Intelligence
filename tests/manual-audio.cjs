@@ -52,6 +52,7 @@ manual.chooseFile(audio);
 const shareRun=manual.stageRun("lead",data,"SHARE");
 assert.equal(shareRun.render,true);
 assert.equal(data[0].bu,"SHARE","SHARE BU Lead can only create SHARE interactions");
+assert.equal(data[0].brand,"SHARE","Default brand follows selected BU");
 assert.ok(!manual.prefillRetry(failedVox.id,"lead",data,"SHARE").render,"SHARE lead cannot retry VOX job");
 manual.reset();
 assert.ok(revoked>=2,"Browser object URLs are revoked on reset/replacement");
