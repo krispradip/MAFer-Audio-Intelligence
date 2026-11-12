@@ -40,6 +40,7 @@ function clickNav(id){
 }
 clickNav("config");
 assert.ok(app().includes("Configuration Console"),"Admin retains technical configuration");
+assert.ok(!app().includes('data-setting="stt.speakers"'),"Mandatory speaker labels are not an editable toggle");
 listeners.click({target:{closest(sel){return sel==="[data-cfg]"?{dataset:{cfg:"sum"}}:null;}}});
 assert.ok(app().includes("Fixed output contract v3.0"),"Fixed extraction contract is visible");
 assert.ok(!app().includes('data-setting="sum.instructions"'),"No editable summary instructions");
