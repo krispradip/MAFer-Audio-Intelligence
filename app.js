@@ -252,6 +252,7 @@ document.addEventListener("change",e=>{
    role="lead";leadBU=next.slice(5);
   }else return;
   window.MAFerManualAudio.reset();
+  query="";filter="all";tab="summary";
   page=role==="lead"?"interactions":"operations";
   selected=role==="lead"?(data.find(i=>i.bu===leadBU)?.id||""):data[0]?.id||"";
   render();
