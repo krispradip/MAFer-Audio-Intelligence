@@ -98,6 +98,7 @@ manualClick("stage");
 assert.ok(app().includes("Staged locally"),"Manual audio staged in browser");
 manualClick("open");
 assert.ok(app().includes("Manual upload"),"Manual interaction visible in Explorer");
+listeners.click({target:{closest(sel){return sel==="[data-tab]"?{dataset:{tab:"transcript"}}:null;}}});
 assert.ok(app().includes("Transcript unavailable"),"Manual upload does not invent a transcript");
 const failedVox="e812a492-206c-4d32-86cd-a0f000000004";
 listeners.click({target:{closest(sel){return sel==="[data-open]"?{dataset:{open:failedVox}}:null;}}});
