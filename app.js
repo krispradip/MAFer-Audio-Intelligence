@@ -184,6 +184,27 @@ else if(a==="save-config"){
 else if(a==="publish"){toast("Production publishing requires a secure backend.");}
 else if(a==="retry"){if(i.trans==="failed")i.trans="processing";else if(i.sum==="failed")i.sum="processing";i.error="";toast("Simulated safe retry queued.");render();}else if(a==="mapping")toast("Ticket mapping must come from CRM/CTI; never guess a ticket.");else if(a==="reconcile")toast("CRM outcome must be reconciled before retrying a ticket update.");}
 document.addEventListener("click",e=>{
+ const manual=e.target.closest("[data-manual-action]");
+ if(manual){
+  if(page!=="manual")return;
+  const action=manual.dataset.manualAction;
+  if(action==="clear"){window.MAFerManualAudio.reset();render();toast("Manual upload form cleared.");return;}
+  if(action==="stage"){
+   const result=window.MAFerManualAudio.stageRun(role,data);
+   if(result.id)selected=result.id;
+   if(result.render)render();
+   if(result.message)toast(result.message);
+   return;
+  }
+  if(action==="submit"){
+   window.MAFerManualAudio.submit(role,data).then(result=>{
+    if(result.render)render();
+    if(result.message)toast(result.message);
+   }).catch(()=>toast("Manual processing request failed."));
+   return;
+  }
+  if(action==="open"){page="interactions";tab="summary";render();return;}
+ }
  const fw=e.target.closest("[data-fw-action]");
  if(fw){
   if(role!=="admin"||!["eq-framework","problem-framework"].includes(page))return toast("Admin access required.");
@@ -204,6 +225,18 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("change",e=>{
  const t=e.target;
+ if(t.id==="manual-file"&&page==="manual"){
+  const result=window.MAFerManualAudio.chooseFile(t.files?.[0]);
+  if(result.render)render();
+  if(result.message)toast(result.message);
+  return;
+ }
+ if(t.dataset.manualField&&page==="manual"){
+  const result=window.MAFerManualAudio.update(t.dataset.manualField,t.value,role,data);
+  if(result.render)render();
+  if(result.message)toast(result.message);
+  return;
+ }
  if((t.id==="fw-scope"||t.dataset.fwField)&&["eq-framework","problem-framework"].includes(page)){
   if(role!=="admin")return toast("Admin access required.");
   const type=page==="eq-framework"?"eq":"problem";
@@ -212,14 +245,31 @@ document.addEventListener("change",e=>{
   if(result?.message)toast(result.message);
   return;
  }
- if(t.id==="role"){role=t.value;page=role==="lead"?"interactions":"operations";selected=role==="lead"?data.find(i=>i.bu==="VOX").id:data[0].id;render();}
+ if(t.id==="role"){
+  role=t.value==="lead"?"lead":"admin";
+  window.MAFerManualAudio.reset();
+  page=role==="lead"?"interactions":"operations";
+  selected=role==="lead"?(data.find(i=>i.bu==="VOX")?.id||""):data[0]?.id||"";
+  render();
+ }
  else if(t.id==="filter"){filter=t.value;render();}
  else if(t.id==="scenario")scenario=t.value;
  else if(t.id==="profile-select"){selectedProfile[cfg]=t.value;render();}
  else if(t.id==="credential-entry"){credentialDrafts[cfg+":"+(getConfig()?.id||"main")]=t.value?"entered":"";t.value="";render();}
  else if(t.dataset.setting){let parts=t.dataset.setting.split(".");let obj=(parts[0]==="stt"||parts[0]==="sum")?getConfig():connectionProfiles[parts[0]];if(obj){obj[parts[1]]=t.value;delete connectionTests[cfg];}}
 });
-document.addEventListener("input",e=>{if(e.target.id==="search"){query=e.target.value;let p=e.target.selectionStart;render();let input=document.querySelector("#search");if(input){input.focus();input.setSelectionRange(p,p);}}});
+document.addEventListener("input",e=>{
+ const t=e.target;
+ if(t.dataset.manualField&&page==="manual"){
+  window.MAFerManualAudio.update(t.dataset.manualField,t.value,role,data);
+  return;
+ }
+ if(t.id==="search"){
+  query=t.value;const p=t.selectionStart;render();
+  const input=document.querySelector("#search");
+  if(input){input.focus();input.setSelectionRange(p,p);}
+ }
+});
 document.querySelector("#menu").addEventListener("click",()=>document.querySelector("#sidebar").classList.toggle("open"));
 try{let s=JSON.parse(localStorage.getItem("mafer-audio-config-v2")||"null");if(s?.serviceProfiles?.stt&&s?.serviceProfiles?.sum){Object.assign(serviceProfiles,s.serviceProfiles);Object.assign(connectionProfiles,s.connectionProfiles);}}catch(e){}
 render();
