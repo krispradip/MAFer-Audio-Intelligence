@@ -8,18 +8,17 @@ Standalone, bilingual contact-centre **audio transcription and interaction intel
 
 - **Operations Console:** end-to-end processing counts and statuses for transcription, AI summarization, CRM update, CRM confirmation, and S3 output readiness; stage-specific exceptions.
 - **Manual Audio Upload:** browser-local file selection, audio playback, new interaction staging and failed-run retry staging (MP3/WAV/M4A/AAC/FLAC/OGG/WebM, up to 50 MB). Actual transcription requires a secure backend.
-- **Interaction Explorer:** searchable timestamped transcript with start/end times per speaker segment, factual CRM summary, language, distinct issues, evidence-backed customer closing sentiment (Happy/Unhappy/Neutral/Unclear), descriptive EQ highlights (not scored), ticket mapping and downloadable Word-compatible preview documents.
-- **Configuration Console:** independently configured speech-to-text service, AI summarization service and enterprise connections, with simulated health/error diagnostics and browser-local draft settings.
-- **Intelligence Configuration:** read-only overview of the selected transcription and summarization engines, supported languages, speaker identification, prompt version and output schema. BU Leads can view these settings without seeing endpoints, credentials or editable controls.
+- **Interaction Explorer:** full English/Arabic timestamped transcript, CRM summary, customer closing sentiment, emotional indicators, conversation signals, interaction references, original-language evidence, interaction metadata and Word-compatible preview exports.
+- **Configuration Console (Admin only):** technical speech-to-text and summarization provider settings, Genesys/CRM/S3 connections and simulated health checks. **Extraction categories, rules and output schema are fixed in code, not editable.**
 - **AI Usage & Diagnostics:** audio minutes, LLM tokens, retries, provider error codes, request IDs and stage-specific diagnostics.
-- **Demo personas:** Platform Admin and BU-scoped Leads (VOX, SHARE, AMBU and Retail). Both can access manual audio upload and the read-only Intelligence Configuration overview. Admin retains the technical Config Console. BU Leads see only their BU's interactions. These are UI-only simulations; real authorization must be enforced on a backend.
+- **Demo personas:** Platform Admin and BU-scoped Leads (VOX, SHARE, AMBU and Retail). Both can access manual audio upload and their permitted interactions. Admin retains technical Config Console and diagnostics. These are UI-only simulations; production authorization must be enforced on a backend.
 
 ## Design principles
 
 1. The Genesys **Conversation ID** is the interaction correlation key. The CRM owns ticket IDs and the mapping from Conversation ID to one or more tickets.
 2. This product owns transcription and interaction intelligence; **QA.MAFer.AI independently owns quality scoring**.
 3. Every speech segment must have STT-generated audio-relative start/end timestamps in milliseconds, a speaker label and original-language text. English, Arabic and bilingual speech are all subject to the same mandatory contract. CRM summaries are provided in configured languages.
-4. The summarization service extracts factual CRM content, whether the customer left happy, unhappy, neutral or unclear, and optional timestamp-linked EQ observations (what to look for, not QA criteria). Formal EQ grading, problem-solving evaluation, compliance and all QA scoring belong exclusively to QA.MAFer.AI.
+4. The service uses a **fixed, versioned output contract**: transcript, CRM summary, customer closing sentiment, optional emotional indicators, conversation signals, interaction references, metadata, evidence and processing state. No editable EQ framework, intelligence enrichment configuration, QA rubric or scoring logic.
 5. Failures are independently tracked by stage. CRM acknowledgment timeout must be reconciled before retrying writes.
 6. The Word files are human-readable deliverables; **JSON/APIs** (once implemented) are for downstream CRM and QA consumption.
 7. Sensitive credentials stay in corporate Vault; the admin UI should only reference DevOps-approved connections.
@@ -36,12 +35,12 @@ Some non-secret integration configuration is stored in browser localStorage only
 - `styles.css` — responsive visual design
 - `sample-data.js` — synthetic interactions with start/end timestamps and seeded configuration
 - `transcript-contract.js` — mandatory segment timing schema, validation, and completion gate (browser prototype only)
-- `conversation-signals.js` — customer closing sentiment and evidence-backed non-scored EQ observation boundary
+- `conversation-signals.js` — fixed extraction instructions, versioned structured output and evidence validation; no QA rubric
 - `app.js` — UI rendering, filtering, simulated actions, diagnostics, document exports
 - `manual-audio.js` — file validation, local audio playback, manual run staging and feature-gated same-origin submission
-- `tests/smoke.cjs` — Node.js startup, product-boundary, timestamp display, read-only intelligence configuration and BU access tests
+- `tests/smoke.cjs` — Node.js startup, fixed-output, timestamp display, no intelligence configuration and BU access tests
 - `tests/timestamps.cjs` — mandatory timing validation, completion gate and error cases
-- `tests/conversation-signals.cjs` — customer closing sentiment and EQ look-for boundaries, with no QA scores
+- `tests/conversation-signals.cjs` — fixed output schema, closing sentiment, evidence and audio-only validation
 - `docs/ARCHITECTURE.md` — production integration boundaries and future build plan
 
 ## Production integration (not included)
@@ -74,7 +73,7 @@ The personal sandbox is intended to process **synthetic English, Arabic and bili
 Target test flow:
 1. Upload or select a synthetic call recording; assign a mock Genesys Conversation ID.
 2. Execute an approved speech-to-text service that provides per-segment start/end timestamps and speaker labels; reject results without valid time alignment.
-3. Execute the independent AI summarization service to extract contact reasons, distinct issues, stated actions, resolution status, next steps, customer closing sentiment and optional descriptive EQ cues, without scoring agent behaviour.
+3. Execute the independently configured summarization service using **code-owned extraction instructions** for CRM facts, closing sentiment, emotional indicators, conversation signals and interaction references, without scoring agent behaviour.
 4. Produce two Word documents and JSON artifacts.
 5. Simulate or sandbox-test CRM ticket correlation, update, acknowledgment, timeout and retry/reconciliation.
 6. Publish completed transcript JSON and a versioned manifest to S3 for independent read-only consumption by QA.MAFer.AI, without incorporating official QA scoring into this standalone service.
@@ -121,7 +120,7 @@ This page shows browser-held **demo settings**, not verified live service health
 
 ## Manual audio upload and controlled recovery
 
-The **Manual Audio Upload** page is available to Platform Admin and BU Lead personas. The demo role selector supports VOX, SHARE, AMBU and Retail leads, each restricted to their BU's interactions and able to inspect read-only processing configuration. It accepts MP3, WAV, M4A, AAC, FLAC, OGG and WebM files up to **50 MB**, validates extension/MIME/size, and offers an in-browser audio player where the browser supports the format. Use **synthetic recordings only** in this public preview.
+The **Manual Audio Upload** page is available to Platform Admin and BU Lead personas. The demo role selector supports VOX, SHARE, AMBU and Retail leads, each restricted to their BU's interactions. It accepts MP3, WAV, M4A, AAC, FLAC, OGG and WebM files up to **50 MB**, validates extension/MIME/size, and offers an in-browser audio player where the browser supports the format. Use **synthetic recordings only** in this public preview.
 
 Two workflows are supported:
 
