@@ -4,7 +4,7 @@ const MAX=50*1024*1024, EXT=new Set(["mp3","wav","m4a","aac","flac","ogg","webm"
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let file=null,preview="",stage={status:"idle",id:"",message:""};
 let form={mode:"new",bu:"VOX",brand:"VOX",agent:"Manual Agent",market:"UAE",language:"Auto-detect",conversationId:"",retryId:""};
-const failed=(role,data,leadBU="VOX")=>data.filter(i=>(role==="admin"||i.bu===leadBU)&&(i.trans==="failed"||i.sum==="failed"));
+const failed=(role,data,leadBU="VOX")=>data.filter(i=>(role==="admin"||i.bu===leadBU)&&(window.MAFerTranscript.effectiveStatus(i)==="failed"||i.sum==="failed"));
 function clearFile(){if(preview&&window.URL?.revokeObjectURL)window.URL.revokeObjectURL(preview);preview="";file=null;}
 function reset(){clearFile();stage={status:"idle",id:"",message:""};form={mode:"new",bu:"VOX",brand:"VOX",agent:"Manual Agent",market:"UAE",language:"Auto-detect",conversationId:"",retryId:""};}
 function chooseFile(next){
