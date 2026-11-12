@@ -197,7 +197,9 @@ document.addEventListener("click",e=>{
    return;
   }
   if(action==="submit"){
-   window.MAFerManualAudio.submit(role,data,leadBU).then(result=>{
+   const request=window.MAFerManualAudio.submit(role,data,leadBU);
+   render();
+   request.then(result=>{
     if(result.render)render();
     if(result.message)toast(result.message);
    }).catch(()=>toast("Manual processing request failed."));
