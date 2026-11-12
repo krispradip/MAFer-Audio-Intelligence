@@ -38,23 +38,27 @@ try{
  }
 }catch(e){}
 let scope="All BUs";
-const active=type=>{
- const own=records[type][scope];
- if(own)return own;
+const publishedView=r=>({...clone(r.publishedSnapshot),scope:r.scope,status:"Published",publishedVersion:r.publishedVersion,history:r.history,baseVersion:r.baseVersion,publishedSnapshot:r.publishedSnapshot});
+const active=(type,viewScope=scope,publishedOnly=false)=>{
  const baseline=records[type]["All BUs"];
- if(baseline.status==="Draft"&&baseline.publishedSnapshot){
-  return {...clone(baseline.publishedSnapshot),scope:"All BUs",status:"Published",publishedVersion:baseline.publishedVersion,history:baseline.history,baseVersion:null};
+ const own=records[type][viewScope];
+ if(publishedOnly){
+  if(own&&own.publishedSnapshot)return publishedView(own);
+  return baseline.publishedSnapshot?publishedView(baseline):baseline;
  }
- return baseline;
+ if(own)return own;
+ return baseline.status==="Draft"&&baseline.publishedSnapshot?publishedView(baseline):baseline;
 };
-const inherited=type=>scope!=="All BUs"&&!records[type][scope];
+const inherited=(type,viewScope=scope,publishedOnly=false)=>viewScope!=="All BUs"&&(!records[type][viewScope]||(publishedOnly&&!records[type][viewScope].publishedSnapshot));
 const versionText=r=>r.publishedVersion==="0.0"?"Not published":"v"+r.publishedVersion;
 function persist(){localStorage.setItem(STORAGE_KEY,JSON.stringify(records));}
-function render(type){
- const meta=TYPES[type],r=active(type),readOnly=inherited(type),editable=!readOnly;
- const options=SCOPES.map(s=>`<option value="${esc(s)}" ${s===scope?"selected":""}>${esc(s==="All BUs"?"All BUs · Enterprise baseline":s)}</option>`).join("");
- const stateLabel=readOnly?"Inherited baseline":r.status==="Draft"?"Draft changes":"Published";
- const sourceText=readOnly?"This BU currently inherits the enterprise baseline. Create an override to customise it.":scope==="All BUs"?"Changes to this baseline apply to BUs without an override.":"This BU override is a versioned copy of the enterprise baseline; later baseline updates require review.";
+function render(type,access={role:"admin",bu:"VOX"}){
+ const isLead=access.role==="lead",viewScope=isLead?"VOX":scope;
+ const meta=TYPES[type],r=active(type,viewScope,isLead),isInherited=inherited(type,viewScope,isLead);
+ const readOnly=isLead||isInherited,editable=!readOnly;
+ const options=isLead?'<div class="fw-readonly">VOX · Your business unit</div>':SCOPES.map(s=>`<option value="${esc(s)}" ${s===scope?"selected":""}>${esc(s==="All BUs"?"All BUs · Enterprise baseline":s)}</option>`).join("");
+ const stateLabel=isInherited?"Inherited baseline":r.status==="Draft"?"Draft changes":"Published";
+ const sourceText=isLead?(isInherited?"Your BU uses the published enterprise baseline.":"Your BU's published framework is shown. Configuration changes are managed by Platform Admin."):isInherited?"This BU currently inherits the enterprise baseline. Create an override to customise it.":viewScope==="All BUs"?"Changes to this baseline apply to BUs without an override.":"This BU override is a versioned copy of the enterprise baseline; later baseline updates require review.";
  const evidence=[
   ["requireQuote","Require direct dialogue quote","Only mark a behaviour Observed when supporting dialogue is available."],
   ["requireTimestamp","Require timestamp","Record the exact transcript location of supporting evidence."],
@@ -84,12 +88,12 @@ function render(type){
    <div class="card-head"><div><h2>Framework settings</h2><div class="sub">Select a BU to view its applicable framework or create an override</div></div></div>
    <div class="form-section">
     <div class="form-grid">
-     <div class="field"><label for="fw-scope">Business unit / scope</label><select id="fw-scope">${options}</select></div>
+     <div class="field"><label for="fw-scope">Business unit / scope</label>${isLead?options:`<select id="fw-scope">${options}</select>`}</div>
      <div class="field"><label>Framework name</label><input data-fw-field="name" value="${esc(r.name)}" ${editable?"":"disabled"}/></div>
      <div class="field"><label>Supported languages</label><select data-fw-field="language" ${editable?"":"disabled"}>${["English + Arabic","English","Arabic"].map(v=>`<option ${r.language===v?"selected":""}>${v}</option>`).join("")}</select></div>
      <div class="field"><label>Published version</label><div class="fw-readonly">${esc(versionText(r))} ${r.status==="Draft"?"· unpublished edits":""}</div></div>
     </div>
-    ${readOnly?`<div class="callout" style="margin-top:16px">No BU override exists for ${esc(scope)}. The published enterprise baseline is used until an override is created.</div><div style="margin-top:12px"><button class="button primary small" type="button" data-fw-action="override">Create ${esc(scope)} override</button></div>`:""}
+    ${!isLead&&isInherited?`<div class="callout" style="margin-top:16px">No BU override exists for ${esc(viewScope)}. The published enterprise baseline is used until an override is created.</div><div style="margin-top:12px"><button class="button primary small" type="button" data-fw-action="override">Create ${esc(viewScope)} override</button></div>`:""}
     <div class="field" style="margin-top:18px"><label>Framework evaluation instructions</label><textarea rows="5" data-fw-field="instructions" ${editable?"":"disabled"}>${esc(r.instructions)}</textarea></div>
    </div>
   </section>
@@ -101,10 +105,10 @@ function render(type){
    <div class="card-head"><div><h2>Evidence & language rules</h2><div class="sub">Applied consistently to English, Arabic and code-switched interactions</div></div></div>
    <div class="form-section"><div class="fw-checks">${evidence}</div><div class="callout" style="margin-top:16px">Transcript-only analysis cannot reliably determine vocal tone, pace, true emotional state or actual IQ. Keep evidence in the original language and avoid inferring unobserved CRM actions.</div></div>
   </section>
-  <div class="fw-actions">${editable?'<button class="button" data-fw-action="reset" type="button">Discard draft edits</button><button class="button" data-fw-action="save" type="button">Save draft</button><button class="button primary" data-fw-action="publish" type="button">Publish demo version</button>':'<span class="hint">Select All BUs or create an override to edit.</span>'}</div>
+  <div class="fw-actions">${editable?'<button class="button" data-fw-action="reset" type="button">Discard draft edits</button><button class="button" data-fw-action="save" type="button">Save draft</button><button class="button primary" data-fw-action="publish" type="button">Publish demo version</button>':`<span class="hint">${isLead?"Read-only published framework · contact Platform Admin for changes.":"Select All BUs or create an override to edit."}</span>`}</div>
  </div>
  <div>
-  <section class="card card-pad"><h2>Published history</h2><p class="hint">Each published version is preserved as a configuration snapshot in this browser demo.</p>${history}${scope!=="All BUs"?`<div class="kv"><span>Base version</span><span>${esc(r.baseVersion||records[type]["All BUs"].publishedVersion)}</span></div>`:""}</section>
+  <section class="card card-pad"><h2>Published history</h2><p class="hint">Each published version is preserved as a configuration snapshot in this browser demo.</p>${history}${viewScope!=="All BUs"?`<div class="kv"><span>Base version</span><span>${esc(r.baseVersion||records[type]["All BUs"].publishedVersion)}</span></div>`:""}</section>
   <section class="card card-pad"><h2>What the analysis produces</h2><div class="pill-group"><span class="tag good">Observed</span><span class="tag muted">Not Observed</span><span class="tag warn">Not Assessable</span></div><p class="hint" style="margin-top:12px">Each finding includes a dimension, status, supporting dialogue, timestamp, language and the framework version used at evaluation time.</p><div class="callout">No numeric EQ or IQ score is calculated. Formal QA scoring remains in QA.MAFer.AI.</div></section>
   <section class="card card-pad"><h2>Demo storage</h2><p class="hint">Draft and published configurations are saved to this browser's local storage. They are not shared across users or connected to the live transcription/summary engines. Production requires a database, approval controls and a version-pinned evaluation service.</p></section>
  </div></div>`;
