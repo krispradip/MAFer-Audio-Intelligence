@@ -21,7 +21,7 @@ const context=vm.createContext({
  setTimeout(){return 1;},clearTimeout(){},
  console
 });
-for(const file of ["sample-data.js","manual-audio.js","app.js"]){
+for(const file of ["sample-data.js","transcript-contract.js","manual-audio.js","app.js"]){
  vm.runInContext(fs.readFileSync(file,"utf8"),context,{filename:file});
 }
 const app=()=>elements.get("#app").innerHTML;
@@ -40,6 +40,8 @@ function clickNav(id){
 }
 clickNav("intelligence");
 assert.ok(app().includes("Speech-to-Text"),"Transcription configuration visible");
+assert.ok(app().includes("Timestamp policy"),"Mandatory timestamp policy shown");
+assert.ok(app().includes("Mandatory — start/end per segment"),"Timestamp requirement is non-optional");
 assert.ok(app().includes("CRM Summary Intelligence"),"Summary configuration visible");
 assert.ok(app().includes("Prompt version"),"Summary prompt version visible");
 assert.ok(!app().includes("secretRef"),"No secret reference in intelligence view");
@@ -50,6 +52,9 @@ assert.ok(app().includes("Configuration Console"),"Admin retains technical confi
 clickNav("interactions");
 assert.ok(!app().includes("Framework-based agent observations"),"No QA scoring in interaction summary");
 assert.ok(app().includes("↓ JSON"),"Admin JSON export available");
+listeners.click({target:{closest(sel){return sel==="[data-tab]"?{dataset:{tab:"transcript"}}:null;}}});
+assert.ok(app().includes("00:05 – 00:12"),"Transcript displays start and end timestamps");
+assert.ok(app().includes("00:16 – 00:26"),"Second segment has time range");
 listeners.change({target:{id:"role",value:"lead-VOX",dataset:{}}});
 assert.ok(nav().includes("Intelligence Configuration"),"BU Lead processing config visible");
 assert.ok(nav().includes("Manual Audio Upload"),"BU Lead manual audio navigation visible");
@@ -107,5 +112,5 @@ manualClick("open");
 assert.ok(app().includes("Manual upload"),"SHARE manual interaction visible");
 listeners.click({target:{closest(sel){return sel==="[data-open]"?{dataset:{open:failedVox}}:null;}}});
 assert.equal(elements.get("#toast").textContent,"Access denied.","Cross-BU interaction access blocked");
-console.log("Smoke tests passed: separation of QA and audio intelligence, read-only BU configuration, multi-BU permissions, manual upload and retry.");
+console.log("Smoke tests passed: mandatory segment timestamps, QA separation, read-only BU configuration, BU permissions and manual recovery.");
 })();
