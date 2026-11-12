@@ -53,10 +53,10 @@ const inherited=(type,viewScope=scope,publishedOnly=false)=>viewScope!=="All BUs
 const versionText=r=>r.publishedVersion==="0.0"?"Not published":"v"+r.publishedVersion;
 function persist(){localStorage.setItem(STORAGE_KEY,JSON.stringify(records));}
 function render(type,access={role:"admin",bu:"VOX"}){
- const isLead=access.role==="lead",viewScope=isLead?"VOX":scope;
+ const isLead=access.role==="lead",viewScope=isLead?(SCOPES.includes(access.bu)&&access.bu!=="All BUs"?access.bu:"VOX"):scope;
  const meta=TYPES[type],r=active(type,viewScope,isLead),isInherited=inherited(type,viewScope,isLead);
  const readOnly=isLead||isInherited,editable=!readOnly;
- const options=isLead?'<div class="fw-readonly">VOX · Your business unit</div>':SCOPES.map(s=>`<option value="${esc(s)}" ${s===scope?"selected":""}>${esc(s==="All BUs"?"All BUs · Enterprise baseline":s)}</option>`).join("");
+ const options=isLead?`<div class="fw-readonly">${esc(viewScope)} · Your business unit</div>`:SCOPES.map(s=>`<option value="${esc(s)}" ${s===scope?"selected":""}>${esc(s==="All BUs"?"All BUs · Enterprise baseline":s)}</option>`).join("");
  const stateLabel=isInherited?"Inherited baseline":r.status==="Draft"?"Draft changes":"Published";
  const sourceText=isLead?(isInherited?"Your BU uses the published enterprise baseline.":"Your BU's published framework is shown. Configuration changes are managed by Platform Admin."):isInherited?"This BU currently inherits the enterprise baseline. Create an override to customise it.":viewScope==="All BUs"?"Changes to this baseline apply to BUs without an override.":"This BU override is a versioned copy of the enterprise baseline; later baseline updates require review.";
  const evidence=[
