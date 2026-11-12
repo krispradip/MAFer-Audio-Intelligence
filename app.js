@@ -13,7 +13,92 @@ function current(){return data.find(i=>i.id===selected&&(role==="admin"||i.bu===
 function detail(i){if(tab==="summary")return '<h3>Reason for contact</h3><p>'+esc(i.reason)+'</p><h3>Issues raised ('+i.issues.length+')</h3>'+(i.issues.map((o,n)=>'<div class="issue"><b>'+(n+1)+". "+esc(o.name)+'</b><small>'+esc(o.status)+"</small></div>").join("")||"<p>Not yet available.</p>")+'<h3>Post-call summary</h3><p>'+esc(i.summary)+'</p><h3>Actions and next steps</h3><p>'+esc(i.actions)+" "+esc(i.next)+'</p><h3>Customer sentiment</h3><p>'+esc(i.sentiment)+'</p><h3>Observable EQ indicators</h3><p>'+esc(i.eq)+'</p><h3>Reasoning indicators</h3><p>'+esc(i.reasoning)+'</p><div class="callout">EQ and reasoning observations are not psychometric IQ scores or official QA.MAFer.AI assessments.</div>';if(tab==="transcript")return i.lines.length?i.lines.map(l=>'<div class="transcript-line"><header><span>'+esc(l[1])+'</span><span>'+esc(l[0])+'</span></header><p>'+esc(l[2])+"</p></div>").join(""):'<div class="empty">Transcript unavailable until processing completes.</div>';let fields=tab==="metadata"?[["Genesys conversation ID",i.id],["Agent",i.agent],["Business unit",i.bu],["Brand",i.brand],["Market",i.market],["Language",i.language],["Agent location",i.agentCountry],["Caller country",i.callerCountry],["Duration",i.duration],["CRM ticket",i.ticket||"Unmatched"],["Issue count",i.issues.length]]:[["Transcription",i.trans],["Summarization",i.sum],["CRM update",i.crm],["CRM response",i.ack],["QA handoff",i.qa],["Technical error",role==="admin"?i.error||"None":"Hidden"]];return fields.map(([k,v])=>'<div class="kv"><span>'+esc(k)+'</span><span>'+esc(v)+"</span></div>").join("");}
 function interactions(){let i=current();if(!i)return heading("Interactions","No available interactions.");let list=data.filter(x=>(role==="admin"||x.bu==="VOX")&&([x.id,x.agent,x.bu,x.brand,x.ticket||"",x.error].join(" ").toLowerCase().includes(query.toLowerCase()))&&(filter==="all"||(filter==="issues"&&!!x.error)||(filter==="ready"&&x.trans==="completed")));let items=list.map(x=>'<button class="interaction-link '+(x.id===i.id?"active":"")+'" data-open="'+esc(x.id)+'"><span class="grow"><strong>'+esc(x.brand)+" · "+esc(x.agent)+'</strong><small>'+esc(x.id.slice(0,15))+' · '+esc(x.language)+'</small></span>'+tag(x.trans)+"</button>").join("");return heading(role==="admin"?"Interaction Explorer":"My BU Interactions","Transcripts, summaries, customer issues, sentiment, agent observations and CRM ticket references.")+'<div class="layout"><section class="card"><div class="card-head"><h2>Interactions</h2><span class="sub">'+list.length+' results</span></div><div class="toolbar"><input class="input" id="search" placeholder="Search conversation, agent, brand or ticket" value="'+esc(query)+'"/><select id="filter"><option value="all">All statuses</option><option value="issues" '+(filter==="issues"?"selected":"")+'>Needs attention</option><option value="ready" '+(filter==="ready"?"selected":"")+'>Completed transcripts</option></select></div><div class="interaction-list">'+(items||'<div class="empty">No matching interactions.</div>')+'</div></section><section class="card"><div class="detail-header"><strong>'+esc(i.brand)+" · "+esc(i.agent)+'</strong><div class="sub mono">'+esc(i.id)+'</div><div class="pill-group" style="margin-top:10px">'+tag(i.trans)+tag(i.sum)+tag(i.crm)+'</div></div><div class="tabs">'+[["summary","Summary"],["transcript","Full Transcript"],["metadata","Metadata"],["status","Processing Status"]].map(([k,n])=>'<button class="tab '+(tab===k?"active":"")+'" data-tab="'+k+'">'+n+"</button>").join("")+'</div><div class="detail-content">'+detail(i)+'<div class="downloads">'+btn("↓ Transcript .doc","export-transcript")+btn("↓ Summary .doc","export-summary")+btn("↓ JSON","export-json")+'</div></div>'+(role==="admin"?'<div class="action-footer"><div><b>Admin investigation</b><div class="sub">'+esc(i.error||"No technical exception")+'</div></div>'+(i.ack==="failed"?btn("Reconcile CRM","reconcile","primary small"):i.crm==="unmatched"?btn("Review mapping","mapping","primary small"):i.trans==="failed"||i.sum==="failed"?btn("Retry failed stage","retry","primary small"):btn("View diagnostics","diagnostics"))+"</div>":"")+"</section></div>";}
 const field=(lab,key,val,opts)=>'<div class="field"><label>'+lab+'</label>'+(opts?'<select data-setting="'+key+'">'+opts.map(o=>'<option value="'+esc(o)+'" '+(o===val?"selected":"")+'>'+esc(o)+"</option>").join("")+"</select>":'<input data-setting="'+key+'" value="'+esc(val)+'"/>')+"</div>";
-function config(){let s=services[cfg]||services.stt;let tabs='<div class="config-tabs">'+[["stt","Speech-to-text Engine"],["sum","AI Summary Engine"],["connections","Enterprise Connections"]].map(([k,n])=>'<button data-cfg="'+k+'" class="'+(k===cfg?"active":"")+'">'+n+"</button>").join("")+"</div>";let form;if(cfg==="connections"){form='<div class="grid2">'+seed.connections.map(c=>'<div class="mini-metric"><b>'+esc(c.name)+'</b><p class="hint">'+esc(c.note)+'</p><div class="kv"><span>DevOps profile</span><span>'+esc(c.profile)+'</span></div>'+tag(c.status)+"</div>").join("")+"</div>";}else{let f=[["Service name","name",s.name],["Provider","provider",s.provider,cfg==="stt"?["Amazon Transcribe","Corporate STT via APIM","Azure AI Speech (if approved)"]:["Corporate OpenAI via APIM","Other approved provider"]],["Model / Deployment","model",s.model],["Region / Gateway","region",s.region],["Approved connection profile","connection",s.connection],["Language policy","language",s.language,cfg==="stt"?["English + Gulf Arabic / multilingual","English","Arabic"]:["English + original language","English only","Arabic only"]],["Max retries","retries",s.retries,["1","2","3"]],["Timeout (seconds)","timeout",s.timeout,["60","95","120","300"]]];if(cfg==="stt")f.push(["Speaker separation","speaker",s.speaker,["Channel ID when available","Speaker diarization","Automatic if supported"]]);else f.push(["Prompt version","prompt",s.prompt,["v1.3","v1.2"]],["JSON schema","schema",s.schema,["v1","v2-candidate"]],["Output token limit","tokens",s.tokens,["1500","2500","4000"]]);form='<div class="form-grid">'+f.map(([n,k,v,opts])=>field(n,cfg+"."+k,v,opts)).join("")+"</div>";}let code=results[cfg];let cases={"200":"Connection healthy","401":"HTTP 401 · AUTHENTICATION_FAILED","403":"HTTP 403 · FORBIDDEN","429":"HTTP 429 · QUOTA_OR_RATE_LIMIT","503":"HTTP 503 · SERVICE_UNAVAILABLE","504":"HTTP 504 · RESPONSE_TIMEOUT"};return heading("Configuration Console","Admin-controlled speech and summarization providers, approved connections, simulated health tests and usage settings.")+tabs+'<div class="layout"><section class="card"><div class="card-head"><h2>'+(cfg==="stt"?"Speech-to-text Engine":cfg==="sum"?"AI Summarization Engine":"Enterprise Connections")+"</h2>"+tag(cfg==="connections"?"healthy":s.status)+'</div><div class="form-section">'+form+'<div class="callout" style="margin-top:15px">Credentials and endpoints are provisioned by DevOps. These fields are demonstration configuration only and do not contact providers.</div></div><div class="action-footer">'+btn("Save draft","save-config")+btn("Publish config (demo)","publish","primary small")+"</div></section>"+'<div><section class="card"><div class="card-head"><h2>Connection health and diagnostics</h2></div><div class="form-section"><div class="health-box"><h3>'+(code==="200"?"Healthy":"Attention required")+"</h3><p>"+cases[code]+'</p><p>Simulated response · no external API contacted.</p></div><div class="field" style="margin-top:16px"><label>Simulate provider response</label><select id="scenario">'+Object.keys(cases).map(k=>'<option value="'+k+'" '+(scenario===k?"selected":"")+">"+cases[k]+"</option>").join("")+"</select></div>"+'<div style="margin-top:14px">'+btn("⚡ Test connection","test","primary")+"</div></div></section>"+'<section class="card card-pad"><h2>What DevOps supplies</h2><p class="hint">Approved LLM and speech deployments, APIM quotas, IAM/EKS identity, Vault references, S3 buckets, recording queue, CRM integration, TLS/network controls and production monitoring.</p><p class="hint">Admin controls can choose approved profiles, language behavior, speaker policy, prompt/schema versions, retries and output limits. Backend enforcement is required.</p></section></div></div>";}
+function config(){
+  const s=services[cfg]||services.stt;
+  const tabs='<div class="config-tabs">'+[
+    ["stt","Speech-to-text Engine"],
+    ["sum","AI Summary Engine"],
+    ["connections","Enterprise Connections"]
+  ].map(([key,label])=>`<button data-cfg="${key}" class="${cfg===key?"active":""}">${label}</button>`).join("")+'</div>';
+  let form="";
+  if(cfg==="connections"){
+    form='<div class="grid2">'+seed.connections.map(c=>`
+      <div class="mini-metric">
+        <b>${esc(c.name)}</b>
+        <p class="hint">${esc(c.note)}</p>
+        <div class="kv"><span>DevOps profile</span><span>${esc(c.profile)}</span></div>
+        ${tag(c.status)}
+      </div>
+    `).join("")+'</div>';
+  } else {
+    const specs=[
+      ["Service name","name",s.name],
+      ["Provider","provider",s.provider,cfg==="stt"?["Amazon Transcribe","Corporate STT via APIM","Azure AI Speech (if approved)"]:["Corporate OpenAI via APIM","Other approved provider"]],
+      ["Model / Deployment","model",s.model],
+      ["Region / Gateway","region",s.region],
+      ["Approved connection profile","connection",s.connection],
+      ["Language policy","language",s.language,cfg==="stt"?["English + Gulf Arabic / multilingual","English","Arabic"]:["English + original language","English only","Arabic only"]],
+      ["Max retries","retries",s.retries,["1","2","3"]],
+      ["Timeout (seconds)","timeout",s.timeout,["60","95","120","300"]]
+    ];
+    if(cfg==="stt"){
+      specs.push(["Speaker separation","speaker",s.speaker,["Channel ID when available","Speaker diarization","Automatic if supported"]]);
+    } else {
+      specs.push(["Prompt version","prompt",s.prompt,["v1.3","v1.2"]]);
+      specs.push(["JSON schema","schema",s.schema,["v1","v2-candidate"]]);
+      specs.push(["Output token limit","tokens",s.tokens,["1500","2500","4000"]]);
+    }
+    form='<div class="form-grid">'+specs.map(([label,key,value,options])=>field(label,cfg+"."+key,value,options)).join("")+'</div>';
+  }
+  const code=results[cfg];
+  const cases={
+    "200":"Connection healthy",
+    "401":"HTTP 401 · AUTHENTICATION_FAILED",
+    "403":"HTTP 403 · FORBIDDEN",
+    "429":"HTTP 429 · QUOTA_OR_RATE_LIMIT",
+    "503":"HTTP 503 · SERVICE_UNAVAILABLE",
+    "504":"HTTP 504 · RESPONSE_TIMEOUT"
+  };
+  return heading("Configuration Console","Admin-controlled speech and summarization providers, approved connections, simulated health tests and usage settings.")+
+    tabs+`
+    <div class="layout">
+      <section class="card">
+        <div class="card-head">
+          <h2>${cfg==="stt"?"Speech-to-text Engine":cfg==="sum"?"AI Summarization Engine":"Enterprise Connections"}</h2>
+          ${tag(cfg==="connections"?"healthy":s.status)}
+        </div>
+        <div class="form-section">
+          ${form}
+          <div class="callout" style="margin-top:15px">Credentials and endpoints are provisioned by DevOps. These settings are demo-only and do not contact providers.</div>
+        </div>
+        <div class="action-footer">${btn("Save draft","save-config")}${btn("Publish config (demo)","publish","primary small")}</div>
+      </section>
+      <div>
+        <section class="card">
+          <div class="card-head"><h2>Connection health and diagnostics</h2></div>
+          <div class="form-section">
+            <div class="health-box">
+              <h3>${code==="200"?"Healthy":"Attention required"}</h3>
+              <p>${cases[code]||"Unknown simulated response"}</p>
+              <p>Simulated response · no external API contacted.</p>
+            </div>
+            <div class="field" style="margin-top:16px">
+              <label for="scenario">Simulate provider response</label>
+              <select id="scenario">
+                ${Object.keys(cases).map(key=>`<option value="${key}" ${scenario===key?"selected":""}>${cases[key]}</option>`).join("")}
+              </select>
+            </div>
+            <div style="margin-top:14px">${btn("⚡ Test connection","test","primary")}</div>
+          </div>
+        </section>
+        <section class="card card-pad">
+          <h2>What DevOps supplies</h2>
+          <p class="hint">Approved LLM and speech deployments, APIM quotas, IAM/EKS identity, Vault references, S3 buckets, recording queue, CRM integration, TLS/network controls and production monitoring.</p>
+          <p class="hint">Admin controls select approved profiles, language behavior, speaker policy, prompt/schema versions, retries and output limits. Backend enforcement is required.</p>
+        </section>
+      </div>
+    </div>`;
+}
 function diagnostics(){let events=[["10:42","Transcription","HTTP 503","SERVICE_UNAVAILABLE",data[3].id],["10:38","Summarization","HTTP 429","QUOTA_OR_RATE_LIMIT",data[2].id],["10:29","CRM response","HTTP 504","RESPONSE_TIMEOUT",data[4].id],["10:21","CRM mapping","Internal","CRM_MAPPING_NOT_FOUND",data[1].id]];return heading("AI Usage & Diagnostics","Transcription minutes, LLM token usage, stage-specific failures and provider error codes.")+'<div class="grid4">'+card("Audio minutes","7,260","Synthetic metering")+card("LLM input","1.82M","Tokens · synthetic")+card("LLM output","310K","Tokens · synthetic")+card("Attention required",exceptions().length,"Current mockup exceptions")+'</div><div class="grid2"><div class="card"><div class="card-head"><h2>Token usage</h2></div><div class="bars">'+[[68,22],[84,30],[77,28],[95,35],[71,24]].map(v=>'<div class="bar-group"><span style="height:'+v[0]+'%"></span><span style="height:'+v[1]+'%"></span></div>').join("")+'</div><div class="axis"><span>08 Nov</span><span>09 Nov</span><span>10 Nov</span><span>11 Nov</span><span>12 Nov</span></div></div><div class="card card-pad"><h2>Observability requirements</h2><p class="hint">Log provider, stage, actual HTTP code, sanitized error body, request ID, retries, latency, audio minutes, model tokens, quota utilization and CRM acknowledgment status.</p><div class="callout">An unacknowledged CRM update requires reconciliation before retrying.</div></div></div><div class="card"><div class="card-head"><h2>Diagnostic event log</h2></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Stage</th><th>Response</th><th>Diagnostic</th><th>Action</th></tr></thead><tbody>'+events.map(e=>'<tr><td>'+e[0]+'</td><td>'+e[1]+'</td><td>'+e[2]+'</td><td>'+e[3]+'</td><td>'+btn("Investigate","open:"+e[4])+"</td></tr>").join("")+"</tbody></table></div></div>";}
 function toast(msg){let t=document.querySelector("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(window.__tid);window.__tid=setTimeout(()=>t.classList.remove("show"),3500);}
 function render(){if(role==="lead"&&page!=="interactions")page="interactions";let nav=role==="admin"?[["operations","▦","Operations Console"],["interactions","◉","Interaction Explorer"],["config","⚙","Config Console"],["diagnostics","◷","AI Usage & Diagnostics"]]:[["interactions","◉","My BU Interactions"]];document.querySelector("#nav").innerHTML=nav.map(([k,icon,name])=>'<button class="nav-item '+(page===k?"active":"")+'" data-nav="'+k+'"><i>'+icon+"</i>"+name+"</button>").join("");let labels={operations:"Operations Console",interactions:"Interaction Explorer",config:"Config Console",diagnostics:"AI Usage & Diagnostics"};document.querySelector("#crumb").textContent=labels[page];document.querySelector("#app").innerHTML={operations,interactions,config,diagnostics}[page]();document.querySelector("#role").value=role;document.querySelector("#sidebar").classList.remove("open");}
