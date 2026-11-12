@@ -4,7 +4,7 @@ const MAX=50*1024*1024, EXT=new Set(["mp3","wav","m4a","aac","flac","ogg","webm"
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let file=null,preview="",stage={status:"idle",id:"",message:""};
 let form={mode:"new",bu:"VOX",brand:"VOX",agent:"Manual Agent",market:"UAE",language:"Auto-detect",conversationId:"",retryId:""};
-const failed=(role,data)=>data.filter(i=>(role==="admin"||i.bu==="VOX")&&(i.trans==="failed"||i.sum==="failed"));
+const failed=(role,data,leadBU="VOX")=>data.filter(i=>(role==="admin"||i.bu===leadBU)&&(i.trans==="failed"||i.sum==="failed"));
 function clearFile(){if(preview&&window.URL?.revokeObjectURL)window.URL.revokeObjectURL(preview);preview="";file=null;}
 function reset(){clearFile();stage={status:"idle",id:"",message:""};form={mode:"new",bu:"VOX",brand:"VOX",agent:"Manual Agent",market:"UAE",language:"Auto-detect",conversationId:"",retryId:""};}
 function chooseFile(next){
@@ -17,19 +17,19 @@ function chooseFile(next){
  stage={status:"idle",id:"",message:"File selected in this browser; nothing has been sent."};
  return {render:true,message:"Audio ready for local preview and staging."};
 }
-function update(field,value,role,data){
+function update(field,value,role,data,leadBU="VOX"){
  if(!Object.prototype.hasOwnProperty.call(form,field))return {};
  const v=String(value??"");
- if(field==="mode"){if(!["new","retry"].includes(v))return {};form.mode=v;if(v==="retry"&&!failed(role,data).some(i=>i.id===form.retryId))form.retryId=failed(role,data)[0]?.id||"";}
+ if(field==="mode"){if(!["new","retry"].includes(v))return {};form.mode=v;if(v==="retry"&&!failed(role,data,leadBU).some(i=>i.id===form.retryId))form.retryId=failed(role,data,leadBU)[0]?.id||"";}
  else if(field==="bu"){if(role!=="admin"||!BUS.includes(v))return {message:"BU access restricted."};form.bu=v;}
- else if(field==="retryId"){if(!failed(role,data).some(i=>i.id===v))return {message:"Failed interaction not available."};form.retryId=v;}
+ else if(field==="retryId"){if(!failed(role,data,leadBU).some(i=>i.id===v))return {message:"Failed interaction not available."};form.retryId=v;}
  else if(field==="language"){if(!LANG.includes(v))return {};form.language=v;}
  else form[field]=v.slice(0,160);
  stage={status:"idle",id:"",message:"Metadata changed; stage the run when ready."};
  return {render:["mode","bu","retryId"].includes(field)};
 }
-function prefillRetry(id,role,data){
- const i=failed(role,data).find(x=>x.id===id);
+function prefillRetry(id,role,data,leadBU="VOX"){
+ const i=failed(role,data,leadBU).find(x=>x.id===id);
  if(!i)return {message:"Interaction is not eligible for manual retry."};
  clearFile();
  form.mode="retry";form.retryId=i.id;form.bu=i.bu;form.brand=i.brand||i.bu;form.agent=i.agent||"Manual Agent";form.market=i.market||"UAE";
@@ -37,13 +37,13 @@ function prefillRetry(id,role,data){
  stage={status:"idle",id:"",message:"Attach audio for "+i.id+"."};
  return {render:true,message:"Retry selected. Attach a recording to continue."};
 }
-function stageRun(role,data){
+function stageRun(role,data,leadBU="VOX"){
  if(!file)return {message:"Select an audio file first."};
  if(stage.status==="staged"||stage.status==="queued")return {message:"Already staged. Clear the form to start another run."};
  let record,existing=form.mode==="retry";
- if(existing){record=failed(role,data).find(i=>i.id===form.retryId);if(!record)return {message:"Choose an accessible failed interaction."};}
+ if(existing){record=failed(role,data,leadBU).find(i=>i.id===form.retryId);if(!record)return {message:"Choose an accessible failed interaction."};}
  else{
-  const bu=role==="lead"?"VOX":form.bu,id=form.conversationId.trim()||("manual-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8));
+  const bu=role==="lead"?leadBU:form.bu,id=form.conversationId.trim()||("manual-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8));
   if(!BUS.includes(bu))return {message:"Invalid business unit."};
   if(!/^[a-zA-Z0-9._:-]{5,128}$/.test(id))return {message:"Conversation ID must be 5–128 letters, numbers, dots, dashes, colons or underscores."};
   if(data.some(i=>i.id===id))return {message:"Conversation ID exists; use Retry for a failed interaction."};
@@ -61,10 +61,10 @@ function stageRun(role,data){
  stage={status:"staged",id:record.id,message:"Manual "+(existing?"retry":"interaction")+" staged locally; not transcribed."};
  return {render:true,id:record.id,message:stage.message};
 }
-async function submit(role,data){
+async function submit(role,data,leadBU="VOX"){
  if(stage.status!=="staged"||!stage.id||!file)return {message:"Stage an audio file first."};
  const i=data.find(x=>x.id===stage.id);
- if(!i||(role==="lead"&&i.bu!=="VOX"))return {message:"Manual run not accessible."};
+ if(!i||(role==="lead"&&i.bu!==leadBU))return {message:"Manual run not accessible."};
  if(window.MAFER_MANUAL_AUDIO_API_ENABLED!==true)return {message:"Processing API not connected. Audio remains local; no transcription performed."};
  if(typeof window.fetch!=="function"||typeof window.FormData!=="function")return {message:"Browser upload API unavailable."};
  stage.status="submitting";
@@ -81,13 +81,13 @@ async function submit(role,data){
   return {render:true,id:i.id,message:"Manual audio job accepted by backend."};
  }catch(e){stage.status="staged";return {render:true,message:"Processing not submitted: "+String(e.message||"service unavailable").slice(0,120)};}
 }
-function render(role,data){
- if(role==="lead")form.bu="VOX";
- const failures=failed(role,data);
+function render(role,data,leadBU="VOX"){
+ if(role==="lead")form.bu=leadBU;
+ const failures=failed(role,data,leadBU);
  if(form.mode==="retry"&&!failures.some(i=>i.id===form.retryId))form.retryId=failures[0]?.id||"";
  const retry=failures.find(i=>i.id===form.retryId);
  const modes=[["new","New manual interaction"],["retry","Retry failed interaction"]].map(([v,t])=>`<option value="${v}" ${form.mode===v?"selected":""}>${t}</option>`).join("");
- const bu=role==="lead"?'<div class="fw-readonly">VOX · Your business unit</div>':`<select data-manual-field="bu">${BUS.map(v=>`<option ${form.bu===v?"selected":""}>${v}</option>`).join("")}</select>`;
+ const bu=role==="lead"?`<div class="fw-readonly">${esc(leadBU)} · Your business unit</div>`:`<select data-manual-field="bu">${BUS.map(v=>`<option ${form.bu===v?"selected":""}>${v}</option>`).join("")}</select>`;
  const fileView=file?`<div class="manual-file-info"><b>${esc(file.name)}</b><small>${(file.size/1048576).toFixed(2)} MB · ${esc(file.type||"audio")}</small></div>${preview?`<audio class="manual-player" controls preload="metadata" src="${esc(preview)}">Audio preview unavailable.</audio>`:""}`:'<p class="hint">No file selected. Choose a synthetic recording for the demo.</p>';
  const retryInput=form.mode==="retry"?`<div class="field manual-full"><label>Failed interaction</label><select data-manual-field="retryId">${failures.map(i=>`<option value="${esc(i.id)}" ${i.id===form.retryId?"selected":""}>${esc(i.brand)} · ${esc(i.id)} · ${esc(i.trans==="failed"?"STT failed":"Summary failed")}</option>`).join("")||'<option value="">No failed interactions</option>'}</select><small>Preserves the existing Conversation ID and completed outputs while staging.</small></div>`:`<div class="field"><label>Conversation ID (optional)</label><input data-manual-field="conversationId" maxlength="128" placeholder="Generate a manual ID" value="${esc(form.conversationId)}"/></div>`;
  const details=form.mode==="retry"&&retry?`<div class="manual-full callout">Retrying <b>${esc(retry.id)}</b> (${esc(retry.bu)}). No existing transcript or summary will be overwritten by staging.</div>`:`<div class="field"><label>Brand</label><input data-manual-field="brand" maxlength="160" value="${esc(form.brand)}"/></div><div class="field"><label>Agent</label><input data-manual-field="agent" maxlength="160" value="${esc(form.agent)}"/></div><div class="field"><label>Market</label><input data-manual-field="market" maxlength="160" value="${esc(form.market)}"/></div><div class="field"><label>Language</label><select data-manual-field="language">${LANG.map(v=>`<option ${form.language===v?"selected":""}>${v}</option>`).join("")}</select></div>`;
