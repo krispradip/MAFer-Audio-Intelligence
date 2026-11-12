@@ -13,7 +13,7 @@ Standalone, bilingual contact-centre **audio transcription and interaction intel
 - **Agent EQ Framework:** six editable behavioural dimensions, positive evidence, exclusions, English/Arabic rules, enterprise baseline, BU overrides, version history, and draft/publish simulation.
 - **Problem-Solving Framework:** six editable reasoning and resolution dimensions, evidence requirements, enterprise baseline, BU overrides, and version history.
 - **AI Usage & Diagnostics:** audio minutes, LLM tokens, retries, provider error codes, request IDs and stage-specific diagnostics.
-- **Demo personas:** Platform Admin and a VOX-restricted BU Lead. Both can access manual audio upload and published EQ/problem-solving frameworks. BU Leads see only their BU's applicable published frameworks, read-only; Admins can configure the enterprise baseline and BU overrides. These are UI-only simulations; real authorization must be enforced on a backend.
+- **Demo personas:** Platform Admin and BU-scoped Leads (VOX, SHARE, AMBU and Retail). Both can access manual audio upload and published EQ/problem-solving frameworks. BU Leads see only their BU's applicable published frameworks, read-only; Admins can configure the enterprise baseline and BU overrides. These are UI-only simulations; real authorization must be enforced on a backend.
 
 ## Design principles
 
@@ -81,7 +81,7 @@ The committed frontend **currently simulates** the transcription, summary and co
 
 ## Intelligence framework configuration
 
-Platform Admins and BU Leads can open **Agent EQ Framework** and **Problem-Solving Framework** from the sidebar under **Intelligence Configuration**. BU Leads see only the published framework applicable to VOX, with no cross-BU selector, draft access or edit controls. Each starts with an editable enterprise baseline and six dimensions. Select a BU to inherit the baseline or create a BU-specific override. Dimensions can be enabled/disabled, added or removed; definitions, positive indicators, guardrails, evidence rules and bilingual instructions can be edited. **Save draft** and **Publish demo version** use localStorage and keep a version history for this browser only.
+Platform Admins and BU Leads can open **Agent EQ Framework** and **Problem-Solving Framework** from the sidebar under **Intelligence Configuration**. BU Leads see only the published framework applicable to their selected BU, with no cross-BU selector, draft access or edit controls. Each starts with an editable enterprise baseline and six dimensions. Select a BU to inherit the baseline or create a BU-specific override. Dimensions can be enabled/disabled, added or removed; definitions, positive indicators, guardrails, evidence rules and bilingual instructions can be edited. **Save draft** and **Publish demo version** use localStorage and keep a version history for this browser only.
 
 Each sample interaction's structured observations are **synthetic and pinned to framework v1.0**. Editing or publishing a new framework does not silently re-score historical interactions. Observations use **Observed / Not Observed / Not Assessable**, evidence timestamps and original-language dialogue when available. No numeric IQ or EQ scores are produced; formal QA remains in QA.MAFer.AI. BU Leads can review these observations and their published framework configuration in their own BU view, but cannot edit frameworks or download JSON.
 
@@ -89,7 +89,7 @@ Each sample interaction's structured observations are **synthetic and pinned to 
 
 ## Manual audio upload and controlled recovery
 
-The **Manual Audio Upload** page is available to both Platform Admin and BU Lead personas. It accepts MP3, WAV, M4A, AAC, FLAC, OGG and WebM files up to **50 MB**, validates extension/MIME/size, and offers an in-browser audio player where the browser supports the format. Use **synthetic recordings only** in this public preview.
+The **Manual Audio Upload** page is available to Platform Admin and BU Lead personas. The demo role selector supports VOX, SHARE, AMBU and Retail leads, each restricted to their BU's interactions and published frameworks. It accepts MP3, WAV, M4A, AAC, FLAC, OGG and WebM files up to **50 MB**, validates extension/MIME/size, and offers an in-browser audio player where the browser supports the format. Use **synthetic recordings only** in this public preview.
 
 Two workflows are supported:
 
