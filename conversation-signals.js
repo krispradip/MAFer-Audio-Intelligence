@@ -33,6 +33,9 @@ function customerClose(interaction){
   const duration=window.MAFerTranscript.parseDurationMs(interaction.duration);
   if(duration!==null&&evidence.startMs<duration*0.65)
    return {label:"Unclear",reason:"Evidence is not from the closing portion of the recording.",evidence:null};
+  const lastCustomerIndex=interaction.segments.reduce((last,segment,index)=>segment.speaker==="Customer"?index:last,-1);
+  if(result.segmentIndex!==lastCustomerIndex)
+   return {label:"Unclear",reason:"The referenced evidence is not the customer's final spoken segment.",evidence:null};
  }
  return {label:result.label,reason:String(result.reason||"").trim()||"Closing sentiment inferred from customer speech.",evidence:evidence||null};
 }
