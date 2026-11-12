@@ -4,7 +4,7 @@
 
 **Genesys Cloud CX** creates Conversation IDs and audio recordings. It does not need to know the CRM ticket ID. Existing Genesys-to-CRM CTI or an enterprise mapping service must record relationships between Genesys Conversation ID and CRM ticket IDs, which can be many-to-many. The **CRM is authoritative** for ticket ID, ticket lifecycle and confirmation of updates.
 
-**MAFer Audio Intelligence** ingests the recording + metadata, performs mandatory time-aligned, speaker-labelled English/Arabic transcription, uses a separately configured LLM for factual issues, contact reasons, stated actions, resolution status, next steps and model-inferred sentiment, generates DOCX/JSON, persists stage-specific status, and publishes completed outputs.
+**MAFer Audio Intelligence** ingests the recording + metadata, performs mandatory time-aligned, speaker-labelled English/Arabic transcription, uses a separately configured LLM for factual issues, contact reasons, stated actions, resolution status, next steps, evidence-backed customer closing sentiment and optional descriptive EQ observations, generates DOCX/JSON, persists stage-specific status, and publishes completed outputs.
 
 **QA.MAFer.AI** independently consumes completed transcript JSON and evidence metadata from approved S3 locations using read-only IAM access. It performs assessments against its own BU rubric and owns assessment state. No QA score or push-based QA handoff is generated in the transcription service.
 
@@ -35,7 +35,7 @@ Genesys raw export is maintained separately. Market is the business market serve
 
 ## Integration contract
 
-Data fields: Genesys Conversation ID, recording IDs/segments, agent IDs and names from Genesys metadata, queue-to-BU mapping, channel, market, language, caller country (only when verified; otherwise unknown), agent work location if available, speaker segments with mandatory `startMs`/`endMs` (audio-relative milliseconds), completeness indicator, issue array and resolution per issue, reason for contact, model-inferred customer sentiment with source/provenance, processing versions and statuses, CRM mapping/status, S3 transcript/summary publication statuses, object versions and manifest URI.
+Data fields: Genesys Conversation ID, recording IDs/segments, agent IDs and names from Genesys metadata, queue-to-BU mapping, channel, market, language, caller country (only when verified; otherwise unknown), agent work location if available, speaker segments with mandatory `startMs`/`endMs` (audio-relative milliseconds), completeness indicator, issue array and resolution per issue, reason for contact, model-inferred customer sentiment at call close with source/provenance, non-scored EQ look-for observations with agent speech evidence, processing versions and statuses, CRM mapping/status, S3 transcript/summary publication statuses, object versions and manifest URI.
 
 CRM updates use the summary through an authenticated CRM API; QA reads transcript JSON from S3. DOCX is primarily for human download or approved S3 archiving. Backend must enforce schema validation, sanitization, redaction, audit trail, access controls, signed retrieval and retention.
 
@@ -52,7 +52,7 @@ Current repository is UI-only with local in-browser simulation. Real authenticat
 
 Reuse existing corporate PostgreSQL infrastructure if capacity, security and lifecycle requirements permit, but use **separate application databases or isolated schemas and credentials**:
 
-- Audio Intelligence owns ingestion jobs, Genesys Conversation ID, recording references, transcript versions, agent/BU metadata, issues and sentiment observations, CRM ticket mapping and status, S3 object URIs and version IDs, processing history, and AI usage diagnostics.
+- Audio Intelligence owns ingestion jobs, Genesys Conversation ID, recording references, transcript versions, agent/BU metadata, issues, customer closing sentiment and optional EQ observations (no scores), CRM ticket mapping and status, S3 object URIs and version IDs, processing history, and AI usage diagnostics.
 - QA.MAFer.AI owns assessment jobs, rubric versions, evidence, coverage, QA scores, and evaluation history.
 - QA references the Genesys Conversation ID **plus transcript version/object version**. Avoid storing a second canonical full transcript in QA PostgreSQL.
 - S3 stores the actual transcript DOCX/JSON, summary DOCX/JSON, metadata and completion manifest. Only published, complete, timestamp-validated and schema-valid transcript artifacts may be consumed by QA. Summary failure must not block transcript availability.
@@ -70,13 +70,21 @@ The transcription service must produce `transcriptSchemaVersion: "1.0"` with `se
 
 If validation fails, record a timestamp-specific error, keep the transcription in failed/incomplete state, and do **not** publish a completion manifest, completed transcript DOCX/JSON or downstream summary/CRM/QA artifacts. Retries should use an approved timestamp-capable engine. The provider's ability to generate aligned segment boundaries must be proven with English, Arabic and code-switched sample recordings before activation. **This is a mandatory service contract, not an editable QA rubric or optional UI setting.**
 
+## Customer close sentiment and EQ look-for contract
+
+The summary engine's **customer sentiment** output answers one question: **Did the customer leave the call happy?** Values: `Happy`, `Unhappy`, `Neutral`, `Unclear`. The inference must rely on actual customer speech at the end of the call, with an index pointing to an STT timestamped segment. A polite farewell or a claimed resolution alone does not establish happiness. When closing evidence is missing or invalid, the result is `Unclear`; while transcription or summarization is incomplete, the result is `Not available`. Do not use opening sentiment or general sentiment trajectories as the outcome.
+
+The **EQ look-fors** are observational cues in agent speech: empathy, active listening, emotional acknowledgement, patience, reassurance and composure. Each optional highlight contains a cue name, factual description and reference to an actual timestamped **agent** segment. No numeric EQ score, grade, weight, pass/fail status, missing-criterion flag or official agent assessment may be generated by this product. An empty highlight array is not a negative finding.
+
+For prototype examples the fields are `customerClose: {label, reason, segmentIndex}` and `eqHighlights: [{cue, note, segmentIndex}]`. Production must independently validate speaker attribution, segment existence, time alignment, closing proximity, original-language meaning, and output schema before publishing results. These summary-derived fields do not replace or feed official QA scoring; QA consumes original transcript evidence independently.
+
 ## Processing intelligence and QA ownership
 
 MAFer Audio Intelligence is a **source-of-truth transcription and CRM summarization service**, not an agent-quality evaluator. It must preserve English, Arabic and code-switched speech in the original language, with speaker labels and mandatory STT-generated start/end timestamps. A provider that cannot deliver time-aligned segments is ineligible for production. Transcription confidence, incomplete audio and speaker uncertainty are **data quality metadata**, not negative QA findings.
 
-The summarization stage extracts only conversation content: contact reason, each distinct issue, actions explicitly stated by participants, resolution status (distinguishing proposed from verified actions), next steps, and optionally model-inferred sentiment. It must not infer completed CRM/system actions without external confirmation. The configured prompt/schema version is recorded with the summary output for traceability.
+The summarization stage extracts conversation content: contact reason, each distinct issue, actions explicitly stated by participants, resolution status (distinguishing proposed from verified actions), next steps, customer sentiment **at the close of the call** (Happy/Unhappy/Neutral/Unclear), and optional descriptive EQ look-fors with agent speech evidence. These are conversation signals, not QA parameters. It must not infer completed CRM/system actions without external confirmation. The configured prompt/schema version is recorded with the summary output for traceability.
 
-**QA.MAFer.AI** owns all rubric-driven agent evaluation, including EQ/empathy, active listening, problem-solving, compliance, scoring, evidence requirements, Not Assessable/Unverified handling, BU-specific rubrics, approval and version history. The transcription service must not create, store or apply QA framework versions or assessment results.
+**QA.MAFer.AI** owns all **rubric-driven** agent evaluation, including scored EQ/empathy and active listening, problem-solving, compliance, evidence grading, Not Assessable/Unverified handling, BU-specific rubrics, approval and version history. MAFer Audio Intelligence may identify EQ look-fors as **non-scored descriptive observations** supported by actual agent speech; it must not create, store or apply QA framework versions, pass/fail flags or assessment results.
 
 **BU Lead visibility:** a read-only Intelligence Configuration screen displays the selected speech engine, summary model, language/speaker capabilities, prompt version and response schema. It does not reveal endpoints, credentials, Vault references or allow edits. Platform Admin uses the separate Config Console. In production, backend RBAC must enforce access; demo role switching is not authentication.
 
