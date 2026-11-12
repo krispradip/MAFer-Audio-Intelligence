@@ -4,7 +4,7 @@
 
 **Genesys Cloud CX** creates Conversation IDs and audio recordings. It does not need to know the CRM ticket ID. Existing Genesys-to-CRM CTI or an enterprise mapping service must record relationships between Genesys Conversation ID and CRM ticket IDs, which can be many-to-many. The **CRM is authoritative** for ticket ID, ticket lifecycle and confirmation of updates.
 
-**MAFer Audio Intelligence** ingests the recording + metadata, performs speaker-labelled English/Arabic transcription, uses a separately configured LLM for issues, sentiment, summary and observable EQ/reasoning indicators, generates DOCX/JSON, persists stage-specific status, and publishes completed outputs.
+**MAFer Audio Intelligence** ingests the recording + metadata, performs speaker-labelled English/Arabic transcription, uses a separately configured LLM for factual issues, contact reasons, stated actions, resolution status, next steps and model-inferred sentiment, generates DOCX/JSON, persists stage-specific status, and publishes completed outputs.
 
 **QA.MAFer.AI** independently consumes completed transcript JSON and evidence metadata from approved S3 locations using read-only IAM access. It performs assessments against its own BU rubric and owns assessment state. No QA score or push-based QA handoff is generated in the transcription service.
 
@@ -35,7 +35,7 @@ Genesys raw export is maintained separately. Market is the business market serve
 
 ## Integration contract
 
-Data fields: Genesys Conversation ID, recording IDs/segments, agent IDs and names from Genesys metadata, queue-to-BU mapping, channel, market, language, caller country (only when verified; otherwise unknown), agent work location if available, speaker segments/timestamps, completeness indicator, issue array and resolution per issue, reason for contact, customer sentiment trend, observable EQ and reasoning evidence with confidence/source, processing versions and statuses, CRM mapping/status, S3 transcript/summary publication statuses, object versions and manifest URI.
+Data fields: Genesys Conversation ID, recording IDs/segments, agent IDs and names from Genesys metadata, queue-to-BU mapping, channel, market, language, caller country (only when verified; otherwise unknown), agent work location if available, speaker segments/timestamps, completeness indicator, issue array and resolution per issue, reason for contact, model-inferred customer sentiment with source/provenance, processing versions and statuses, CRM mapping/status, S3 transcript/summary publication statuses, object versions and manifest URI.
 
 CRM updates use the summary through an authenticated CRM API; QA reads transcript JSON from S3. DOCX is primarily for human download or approved S3 archiving. Backend must enforce schema validation, sanitization, redaction, audit trail, access controls, signed retrieval and retention.
 
@@ -60,26 +60,21 @@ Reuse existing corporate PostgreSQL infrastructure if capacity, security and lif
 
 ## User permissions
 
-BU Leads see only their BU interactions, published EQ/problem-solving frameworks, full transcripts and CRM summaries and can download human-readable Word documents. They do not receive JSON export or technical configuration access. Platform Admins can export JSON for troubleshooting. Production permissions must be enforced by backend authorization, not just hidden UI buttons.
+BU Leads see only their BU interactions, full transcripts, CRM summaries and a read-only overview of the active transcription and summarization engine settings; they can download human-readable Word documents. They do not receive JSON export, service endpoints, secret references or editable technical configuration. Platform Admins can export JSON and edit approved integration settings for troubleshooting. Production permissions must be enforced by backend authorization, not just hidden UI buttons.
 
-## Governed intelligence frameworks
+## Processing intelligence and QA ownership
 
-The standalone transcription product includes **two distinct, configuration-driven behavioural analysis frameworks**. They are **not** QA rubrics, and no reference document upload is required for the first version:
+MAFer Audio Intelligence is a **source-of-truth transcription and CRM summarization service**, not an agent-quality evaluator. It must preserve English, Arabic and code-switched speech in the original language, with speaker labels and timestamps when the speech engine supports them. Transcription confidence, incomplete audio and speaker uncertainty are **data quality metadata**, not negative QA findings.
 
-1. **Agent EQ Framework:** empathy and acknowledgement, active listening, composed responses, de-escalation, ownership/reassurance, and respectful communication.
-2. **Problem-Solving Framework:** issue identification, diagnostic questioning, structured reasoning, solution relevance, next-step clarity, and resolution verification.
+The summarization stage extracts only conversation content: contact reason, each distinct issue, actions explicitly stated by participants, resolution status (distinguishing proposed from verified actions), next steps, and optionally model-inferred sentiment. It must not infer completed CRM/system actions without external confirmation. The configured prompt/schema version is recorded with the summary output for traceability.
 
-Each dimension stores an identifier, name, observable definition, positive evidence examples, exclusions/guardrails, and an enabled flag. A framework also stores its language policy (English, Arabic or bilingual), evaluator instructions, evidence requirements, scope, status and immutable published version. The enterprise baseline applies by default; a BU can have a separately published override. In production, overrides and baseline updates need an explicit governance/approval policy.
+**QA.MAFer.AI** owns all rubric-driven agent evaluation, including EQ/empathy, active listening, problem-solving, compliance, scoring, evidence requirements, Not Assessable/Unverified handling, BU-specific rubrics, approval and version history. The transcription service must not create, store or apply QA framework versions or assessment results.
 
-**Evaluation contract:** for each applicable dimension, output `Observed`, `Not Observed`, or `Not Assessable`, a brief grounded explanation, original-language dialogue quote, timestamp(s), and evidence provenance. Never equate lack of transcript evidence with a negative finding. Do not infer emotional state, IQ, vocal tone or completed CRM actions from transcript-only evidence. Arabic dialect and English/Arabic code-switching must not be penalised.
-
-**Version pinning:** when summarization begins, resolve the published framework version applicable to the interaction's BU and persist the version IDs in the processing job. Store the exact versions and findings in `summary.json` / `metadata.json` with the Genesys Conversation ID and transcript version. Publishing a new framework does not change historical assessments; explicit reprocessing creates a new evaluation version. QA.MAFer.AI retains independent ownership of formal QA scores and rubrics.
-
-**Current mockup:** the Admin pages allow editing, local draft save, BU override creation and demo publishing. Published history is browser-local and does not constitute a shared or immutable audit log. The example evidence is fixed synthetic data; no live LLM call is made from these screens. The production backend must enforce schema validation, role checks, approvals, immutable version storage and controlled execution.
+**BU Lead visibility:** a read-only Intelligence Configuration screen displays the selected speech engine, summary model, language/speaker capabilities, prompt version and response schema. It does not reveal endpoints, credentials, Vault references or allow edits. Platform Admin uses the separate Config Console. In production, backend RBAC must enforce access; demo role switching is not authentication.
 
 ## Manual audio ingestion and failed-run recovery
 
-**Manual Audio Upload** is a controlled fallback to automated Genesys-to-S3 ingestion, not a separate transcription pipeline. Both automated and manual submissions must use the same processing job schema, STT engine, summarization engine, EQ/problem-solving framework resolver, output contracts, and observability.
+**Manual Audio Upload** is a controlled fallback to automated Genesys-to-S3 ingestion, not a separate transcription pipeline. Both automated and manual submissions must use the same processing job schema, STT engine, summarization engine, output contracts, and observability.
 
 ### Frontend prototype (implemented)
 
@@ -100,7 +95,7 @@ Each dimension stores an identifier, name, observable definition, positive evide
 
 Successful acceptance: HTTP 202 and JSON `{"jobId":"<opaque-id>","status":"queued"}`. The frontend must not infer that transcription, CRM update or QA processing completed from this acknowledgment. Expose a separate authenticated job-status endpoint and only display verified stage results.
 
-Server-side requirements: Entra/SSO or approved identity, backend RBAC, virus scanning, content validation, throttling, file encryption, temporary upload storage, durable queue, job correlation, idempotent retries, failure classification, request tracing, retention, signed artifact access and audit history. Never accept a BU override from the browser without verifying the user's authorization. Avoid sending raw audio through APIM chat-completions endpoints. The STT adapter and LLM summarization adapter remain separate.
+Server-side requirements: Entra/SSO or approved identity, backend RBAC, virus scanning, content validation, throttling, file encryption, temporary upload storage, durable queue, job correlation, idempotent retries, failure classification, request tracing, retention, signed artifact access and audit history. Never accept a BU assignment from the browser without verifying the user's authorization. Avoid sending raw audio through APIM chat-completions endpoints. The STT adapter and LLM summarization adapter remain separate.
 
 For a failed **summarization-only** job with a valid completed transcript, a production retry may use the existing transcript without retranscribing audio; the backend chooses the safe restart stage. For failed transcription, the manually attached recording can be used to restart STT. CRM update retries remain subject to CRM acknowledgment reconciliation and are not automatically triggered by a manual audio upload.
 
