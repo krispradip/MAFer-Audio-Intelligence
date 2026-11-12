@@ -122,7 +122,24 @@ function exportSample(kind){
  a.href=url;a.download=(kind==="export-transcript"?"transcript":"summary")+".doc";a.click();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-function act(a){if(a.startsWith("open:")){let id=a.slice(5),i=data.find(x=>x.id===id);if(!i||(role==="lead"&&i.bu!=="VOX"))return toast("Access denied.");selected=id;tab="summary";page="interactions";render();return;}if(a.startsWith("export-"))return exportSample(a);if(a==="config"||a==="diagnostics"){if(role==="admin"){page=a;render();}return;}if(role!=="admin")return toast("Admin access required.");let i=current();if(a.startsWith("section:")){cfg=a.slice(8);scenario="200";page="config";render();return;}
+function act(a){
+ if(a.startsWith("open:")){
+  const id=a.slice(5),i=data.find(x=>x.id===id);
+  if(!i||(role==="lead"&&i.bu!=="VOX"))return toast("Access denied.");
+  selected=id;tab="summary";page="interactions";render();return;
+ }
+ if(a.startsWith("export-"))return exportSample(a);
+ if(a==="manual"){page="manual";render();return;}
+ if(a.startsWith("manual-retry:")){
+  const result=window.MAFerManualAudio.prefillRetry(a.slice("manual-retry:".length),role,data);
+  if(result.render){page="manual";render();}
+  if(result.message)toast(result.message);
+  return;
+ }
+ if(a==="config"||a==="diagnostics"){if(role==="admin"){page=a;render();}return;}
+ if(role!=="admin")return toast("Admin access required.");
+ const i=current();
+ if(a.startsWith("section:")){cfg=a.slice(8);scenario="200";page="config";render();return;}
 if(a==="add-profile"){
  if(cfg!=="stt"&&cfg!=="sum")return;
  const copy=JSON.parse(JSON.stringify(getConfig()));
