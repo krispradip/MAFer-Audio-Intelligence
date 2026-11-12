@@ -88,30 +88,47 @@ function config(){
 }
 
 function diagnostics(){let events=[["10:42","Transcription","HTTP 503","SERVICE_UNAVAILABLE",data[3].id],["10:38","Summarization","HTTP 429","QUOTA_OR_RATE_LIMIT",data[2].id],["10:29","CRM response","HTTP 504","RESPONSE_TIMEOUT",data[4].id],["10:21","CRM mapping","Internal","CRM_MAPPING_NOT_FOUND",data[1].id]];return heading("AI Usage & Diagnostics","Transcription minutes, LLM token usage, stage-specific failures and provider error codes.")+'<div class="grid4">'+card("Audio minutes","7,260","Synthetic metering")+card("LLM input","1.82M","Tokens · synthetic")+card("LLM output","310K","Tokens · synthetic")+card("Attention required",exceptions().length,"Current mockup exceptions")+'</div><div class="grid2"><div class="card"><div class="card-head"><h2>Token usage</h2></div><div class="bars">'+[[68,22],[84,30],[77,28],[95,35],[71,24]].map(v=>'<div class="bar-group"><span style="height:'+v[0]+'%"></span><span style="height:'+v[1]+'%"></span></div>').join("")+'</div><div class="axis"><span>08 Nov</span><span>09 Nov</span><span>10 Nov</span><span>11 Nov</span><span>12 Nov</span></div></div><div class="card card-pad"><h2>Observability requirements</h2><p class="hint">Log provider, stage, actual HTTP code, sanitized error body, request ID, retries, latency, audio minutes, model tokens, quota utilization and CRM acknowledgment status.</p><div class="callout">An unacknowledged CRM update requires reconciliation before retrying.</div></div></div><div class="card"><div class="card-head"><h2>Diagnostic event log</h2></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Stage</th><th>Response</th><th>Diagnostic</th><th>Action</th></tr></thead><tbody>'+events.map(e=>'<tr><td>'+e[0]+'</td><td>'+e[1]+'</td><td>'+e[2]+'</td><td>'+e[3]+'</td><td>'+btn("Investigate","open:"+e[4])+"</td></tr>").join("")+"</tbody></table></div></div>";}
+function intelligenceConfig(){
+ const stt=serviceProfiles.stt.find(p=>p.active)||serviceProfiles.stt[0]||{};
+ const sum=serviceProfiles.sum.find(p=>p.active)||serviceProfiles.sum[0]||{};
+ const view=(label,value)=>'<div class="kv"><span>'+esc(label)+'</span><span>'+esc(value||"Not configured")+'</span></div>';
+ const status='<span class="tag muted">Demo configuration · not live</span>';
+ const leadNote=role==="lead"?' · '+esc(leadBU)+' BU view':"";
+ return heading("Intelligence Configuration","Read-only overview of the transcription and CRM summarization engines"+leadNote+". QA assessment rules are managed separately in QA.MAFer.AI.")+
+  '<div class="grid2">'+
+  '<section class="card"><div class="card-head"><h2>Speech-to-Text</h2>'+status+'</div><div class="form-section">'+
+   view("Configured engine",stt.name)+view("Service type",stt.service)+view("Model / deployment",stt.model)+
+   view("Supported languages",stt.language)+view("Speaker identification",stt.speakers)+
+   '<div class="callout">Produces a speaker-labelled transcript, original-language text and timestamps when supported by the configured engine. It does not judge agent performance.</div>'+
+  '</div></section>'+
+  '<section class="card"><div class="card-head"><h2>CRM Summary Intelligence</h2>'+status+'</div><div class="form-section">'+
+   view("Configured engine",sum.name)+view("Service type",sum.service)+view("Model / deployment",sum.model)+
+   view("Summary language",sum.language)+view("Prompt version",sum.prompt)+view("Output schema",sum.schema)+
+   '<div class="callout">Extracts contact reasons, distinct issues, factual actions, resolution status, next steps and a clearly labelled model-inferred sentiment summary. No EQ, problem-solving or QA scores are produced.</div>'+
+  '</div></section></div>'+
+  '<section class="card card-pad"><h2>Configuration ownership</h2><p class="hint">Business Unit Leads can inspect the configured processing capabilities but cannot edit provider settings, credentials or infrastructure connections. Platform Admin manages configuration in Config Console. This prototype does not verify actual provider availability or run real transcription.</p></section>';
+}
 function toast(msg){let t=document.querySelector("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(window.__tid);window.__tid=setTimeout(()=>t.classList.remove("show"),3500);}
 function render(){
- const leadPages=["interactions","manual","eq-framework","problem-framework"];
+ const leadPages=["interactions","manual","intelligence"];
  if(role==="lead"&&!leadPages.includes(page))page="interactions";
  const nav=role==="admin"?[
   ["operations","▦","Operations Console"],["manual","↑","Manual Audio Upload"],
-  ["interactions","◉","Interaction Explorer"],["config","⚙","Config Console"],
-  ["eq-framework","♡","Agent EQ Framework"],["problem-framework","◇","Problem-Solving Framework"],
-  ["diagnostics","◷","AI Usage & Diagnostics"]
+  ["interactions","◉","Interaction Explorer"],["intelligence","✦","Intelligence Configuration"],
+  ["config","⚙","Config Console"],["diagnostics","◷","AI Usage & Diagnostics"]
  ]:[
   ["interactions","◉","My BU Interactions"],["manual","↑","Manual Audio Upload"],
-  ["eq-framework","♡","Agent EQ Framework"],["problem-framework","◇","Problem-Solving Framework"]
+  ["intelligence","✦","Intelligence Configuration"]
  ];
  document.querySelector("#nav").innerHTML=nav.map(([key,icon,name])=>
-  (key==="eq-framework"?'<div class="nav-label fw-nav-label">INTELLIGENCE CONFIGURATION</div>':"")+
+  (key==="intelligence"?'<div class="nav-label fw-nav-label">PROCESSING CONFIGURATION</div>':"")+
   '<button class="nav-item '+(page===key?"active":"")+'" data-nav="'+key+'"><i>'+icon+"</i>"+name+"</button>"
  ).join("");
  const labels={operations:"Operations Console",manual:"Manual Audio Upload",interactions:"Interaction Explorer",
-  config:"Config Console","eq-framework":"Agent EQ Framework","problem-framework":"Problem-Solving Framework",
-  diagnostics:"AI Usage & Diagnostics"};
+  intelligence:"Intelligence Configuration",config:"Config Console",diagnostics:"AI Usage & Diagnostics"};
  document.querySelector("#crumb").textContent=labels[page];
- const views={operations,manual:()=>window.MAFerManualAudio.render(role,data,leadBU),interactions,config,diagnostics,
-  "eq-framework":()=>window.MAFerFrameworks.render("eq",{role,bu:leadBU}),
-  "problem-framework":()=>window.MAFerFrameworks.render("problem",{role,bu:leadBU})};
+ const views={operations,manual:()=>window.MAFerManualAudio.render(role,data,leadBU),interactions,
+  intelligence:intelligenceConfig,config,diagnostics};
  document.querySelector("#app").innerHTML=views[page]();
  document.querySelector("#role").value=role==="lead"?"lead-"+leadBU:"admin";
  document.querySelector("#sidebar").classList.remove("open");
