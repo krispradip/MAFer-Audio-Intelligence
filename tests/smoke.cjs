@@ -21,7 +21,7 @@ const context=vm.createContext({
  setTimeout(){return 1;},clearTimeout(){},
  console
 });
-for(const file of ["sample-data.js","transcript-contract.js","manual-audio.js","app.js"]){
+for(const file of ["sample-data.js","transcript-contract.js","conversation-signals.js","manual-audio.js","app.js"]){
  vm.runInContext(fs.readFileSync(file,"utf8"),context,{filename:file});
 }
 const app=()=>elements.get("#app").innerHTML;
@@ -34,7 +34,7 @@ assert.ok(!nav().includes("Problem-Solving Framework"),"No problem-solving scori
 assert.ok(!("frameworkEvidence" in context.window.SEED.interactions[0]),"Audio records exclude QA evidence");
 assert.ok(!("eq" in context.window.SEED.interactions[0]),"Audio records exclude EQ scores");
 assert.ok(!("reasoning" in context.window.SEED.interactions[0]),"Audio records exclude reasoning scores");
-assert.ok(!context.window.SEED.serviceProfiles.sum[0].instructions.includes("empathy"),"Summary prompt does not evaluate EQ");
+assert.ok(context.window.SEED.serviceProfiles.sum[0].instructions.includes("optional non-scored observations"),"Summary prompt treats EQ as non-scored look-fors");
 function clickNav(id){
  listeners.click({target:{closest(sel){return sel==="[data-nav]"?{dataset:{nav:id}}:null;}}});
 }
@@ -43,6 +43,8 @@ assert.ok(app().includes("Speech-to-Text"),"Transcription configuration visible"
 assert.ok(app().includes("Timestamp policy"),"Mandatory timestamp policy shown");
 assert.ok(app().includes("Mandatory — start/end per segment"),"Timestamp requirement is non-optional");
 assert.ok(app().includes("CRM Summary Intelligence"),"Summary configuration visible");
+assert.ok(app().includes("Did the customer leave the call happy?"),"Sentiment asks only about customer outcome at close");
+assert.ok(app().includes("EQ look-fors"),"EQ cues are visible as non-QA observations");
 assert.ok(app().includes("Prompt version"),"Summary prompt version visible");
 assert.ok(!app().includes("secretRef"),"No secret reference in intelligence view");
 assert.ok(!app().includes("https://stt-demo.example.invalid"),"No API endpoint exposed");
@@ -50,7 +52,12 @@ assert.ok(!app().includes("Require direct dialogue quote"),"QA evidence rules ab
 clickNav("config");
 assert.ok(app().includes("Configuration Console"),"Admin retains technical configuration editor");
 clickNav("interactions");
-assert.ok(!app().includes("Framework-based agent observations"),"No QA scoring in interaction summary");
+assert.ok(app().includes("Customer sentiment at call close"),"Customer closing sentiment appears in summary");
+assert.ok(app().includes("Unhappy"),"Explicit customer dissatisfaction shown");
+assert.ok(app().includes("06:30 – 06:38"),"Closing sentiment evidence is timestamped");
+assert.ok(app().includes("EQ look-fors · observational, not QA"),"EQ observations are non-scored");
+assert.ok(app().includes("Emotional acknowledgement"),"Observed EQ cue appears");
+assert.ok(!app().includes("QA score"),"No QA score in interaction summary");
 assert.ok(app().includes("↓ JSON"),"Admin JSON export available");
 listeners.click({target:{closest(sel){return sel==="[data-tab]"?{dataset:{tab:"transcript"}}:null;}}});
 assert.ok(app().includes("00:05 – 00:12"),"Transcript displays start and end timestamps");
