@@ -60,7 +60,7 @@ Reuse existing corporate PostgreSQL infrastructure if capacity, security and lif
 
 ## User permissions
 
-BU Leads see their BU interactions, full transcripts and CRM summaries and can download human-readable Word documents. They do not receive JSON export or technical configuration access. Platform Admins can export JSON for troubleshooting. Production permissions must be enforced by backend authorization, not just hidden UI buttons.
+BU Leads see only their BU interactions, published EQ/problem-solving frameworks, full transcripts and CRM summaries and can download human-readable Word documents. They do not receive JSON export or technical configuration access. Platform Admins can export JSON for troubleshooting. Production permissions must be enforced by backend authorization, not just hidden UI buttons.
 
 ## Governed intelligence frameworks
 
@@ -83,7 +83,7 @@ Each dimension stores an identifier, name, observable definition, positive evide
 
 ### Frontend prototype (implemented)
 
-- Platform Admin can stage a new recording for any configured BU; the simulated VOX BU Lead can stage VOX recordings only.
+- Platform Admin can stage a new recording for any configured BU; each simulated BU Lead can stage recordings for their own BU only.
 - Both can attach and locally preview supported audio (MP3, WAV, M4A, AAC, FLAC, OGG, WebM; 50 MB maximum) and stage a new interaction or a retry of an existing failed STT/summarization job.
 - A retry retains the Genesys Conversation ID and existing completed artifacts; it must not overwrite a prior successful transcript or summary before the replacement version is durable and validated.
 - No audio bytes are persisted in browser localStorage or committed to GitHub. The demo cannot transcribe or summarize audio.
