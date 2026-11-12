@@ -10,6 +10,7 @@ const window={
 };
 const context=vm.createContext({window,console});
 vm.runInContext(fs.readFileSync("sample-data.js","utf8"),context,{filename:"sample-data.js"});
+vm.runInContext(fs.readFileSync("transcript-contract.js","utf8"),context,{filename:"transcript-contract.js"});
 vm.runInContext(fs.readFileSync("manual-audio.js","utf8"),context,{filename:"manual-audio.js"});
 const manual=window.MAFerManualAudio,data=JSON.parse(JSON.stringify(window.SEED.interactions));
 const audio={name:"synthetic-call.wav",type:"audio/wav",size:2048};
