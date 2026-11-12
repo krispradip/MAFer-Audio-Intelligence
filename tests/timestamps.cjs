@@ -40,5 +40,32 @@ const missingSpeaker=copy();missingSpeaker.segments[0].speaker="";expectInvalid(
 const missingText=copy();missingText.segments[0].text=" ";expectInvalid(missingText,"TRANSCRIPT_SEGMENT_INCOMPLETE");
 const inProgress=copy();inProgress.trans="processing";inProgress.segments=[];
 assert.equal(timing.effectiveStatus(inProgress),"processing","Pending jobs are not incorrectly failed");
+// End-to-end preview gate: a malformed STT result cannot appear Completed or be exported.
+const nodes=new Map(["#app","#nav","#crumb","#role","#sidebar","#menu","#toast"].map(id=>[id,{
+ innerHTML:"",textContent:"",value:"",
+ classList:{add(){},remove(){},toggle(){}},addEventListener(){}
+}]));
+const listeners={};
+const uiContext=vm.createContext({
+ window:{URL:{createObjectURL(){return "blob:demo";},revokeObjectURL(){}}},
+ document:{
+  querySelector(id){return nodes.get(id)||null;},
+  addEventListener(event,handler){listeners[event]=handler;},
+  createElement(){return {click(){}};}
+ },
+ localStorage:{getItem(){return null;},setItem(){}},
+ setTimeout(){return 1;},clearTimeout(){},console
+});
+for(const file of ["sample-data.js","transcript-contract.js","manual-audio.js"])
+ vm.runInContext(fs.readFileSync(file,"utf8"),uiContext,{filename:file});
+uiContext.window.SEED.interactions[0].segments[0].endMs=null;
+vm.runInContext(fs.readFileSync("app.js","utf8"),uiContext,{filename:"app.js"});
+assert.ok(nodes.get("#app").innerHTML.includes("TRANSCRIPT_TIMESTAMPS_INVALID"),"Operations must flag invalid completed transcript");
+listeners.click({target:{closest(sel){return sel==="[data-nav]"?{dataset:{nav:"interactions"}}:null;}}});
+assert.ok(nodes.get("#app").innerHTML.includes("Failed"),"Interaction must not show Completed");
+listeners.click({target:{closest(sel){return sel==="[data-tab]"?{dataset:{tab:"transcript"}}:null;}}});
+assert.ok(nodes.get("#app").innerHTML.includes("Transcript rejected"),"Invalid transcript must be rejected in explorer");
+listeners.click({target:{closest(sel){return sel==="[data-action]"?{dataset:{action:"export-transcript"}}:null;}}});
+assert.match(nodes.get("#toast").textContent,/validated start\/end timestamps/,"Invalid transcript export must be blocked");
 console.log("Timestamp contract tests passed: mandatory start/end, speaker/text, ordering, overlap, bounds and completion gate.");
 })();
