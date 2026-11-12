@@ -17,6 +17,7 @@ jobs:
         run: |
           node --check sample-data.js
           node --check frameworks.js
+          node --check manual-audio.js
           node --check app.js
           node --check tests/smoke.cjs
       - name: Validate required files and UI wiring
@@ -26,10 +27,12 @@ jobs:
           test -s sample-data.js
           test -s app.js
           test -s frameworks.js
+          test -s manual-audio.js
           test -s tests/smoke.cjs
           test -s docs/ARCHITECTURE.md
           grep -q 'sample-data.js' index.html
           grep -q 'frameworks.js' index.html
+          grep -q 'manual-audio.js' index.html
           grep -q 'app.js' index.html
           grep -q 'styles.css' index.html
           echo "Prototype file checks passed."
