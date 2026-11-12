@@ -42,7 +42,9 @@ jobs:
           grep -q 'transcript-contract.js' index.html
           grep -q 'conversation-signals.js' index.html
           ! grep -q 'frameworks.js' index.html
-          grep -q 'Intelligence Configuration' app.js
+          ! grep -q 'Intelligence Configuration' app.js
+          grep -q 'Fixed output contract v3.0' app.js
+          ! grep -q 'data-setting="sum.instructions"' app.js
           grep -q 'manual-audio.js' index.html
           grep -q 'app.js' index.html
           grep -q 'styles.css' index.html
