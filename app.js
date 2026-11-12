@@ -1,6 +1,6 @@
 (function(){
 "use strict";
-const seed=window.SEED;let data=JSON.parse(JSON.stringify(seed.interactions));let services=JSON.parse(JSON.stringify(seed.services));let role="admin",page="operations",selected=data[0].id,tab="summary",cfg="stt",query="",filter="all",scenario="200",results={stt:"200",sum:"200",connections:"200"};
+const seed=window.SEED;let data=JSON.parse(JSON.stringify(seed.interactions));let services=JSON.parse(JSON.stringify(seed.services));let role="admin",leadBU="VOX",page="operations",selected=data[0].id,tab="summary",cfg="stt",query="",filter="all",scenario="200",results={stt:"200",sum:"200",connections:"200"};
 const esc=v=>String(v??"").replace(/[&<>"\x27]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",[String.fromCharCode(34)]:"&quot;",[String.fromCharCode(39)]:"&#39;"}[c]));
 const tag=x=>{let map={completed:["Completed","good"],processing:["In progress","info"],failed:["Failed","bad"],waiting:["Waiting","muted"],confirmed:["Confirmed","good"],delivered:["Delivered","good"],unmatched:["Unmatched","bad"],sent:["Awaiting CRM","warn"],healthy:["Healthy","good"],degraded:["Degraded","warn"],untested:["Not tested","muted"]};let a=map[x]||[x,"muted"];return '<span class="tag '+a[1]+'">'+esc(a[0])+'</span>';};
 const btn=(label,action,sty="small")=>'<button type="button" class="button '+sty+'" data-action="'+action+'">'+label+"</button>";
@@ -9,7 +9,7 @@ const card=(name,num,desc)=>'<div class="card metric"><div class="k">'+name+'</d
 const statusCount=(field)=>{let r={completed:0,processing:0,failed:0,waiting:0};data.forEach(i=>{let s=i[field];if(s==="confirmed"||s==="delivered")s="completed";if(s==="unmatched")s="failed";if(s==="sent")s="processing";r[s in r?s:"waiting"]++;});return r;};
 const exceptions=()=>data.filter(i=>!!i.error||i.crm==="unmatched"||i.ack==="failed");
 function operations(){let tc=statusCount("trans"),ac=statusCount("ack");let stages=[["trans","Transcription"],["sum","AI Summarization"],["crm","CRM Ticket Update"],["ack","CRM Confirmation"]];let bars=stages.map(([key,label])=>{let n=statusCount(key),total=data.length;return '<div class="stage"><div class="stage-row"><b>'+label+'</b><small>'+n.completed+'/'+total+' completed</small></div><div class="bar"><span class="done" style="width:'+100*n.completed/total+'%"></span><span class="busy" style="width:'+100*n.processing/total+'%"></span><span class="fail" style="width:'+100*n.failed/total+'%"></span><span class="wait" style="width:'+100*n.waiting/total+'%"></span></div><div class="legend"><span>'+n.completed+' completed</span><span>'+n.processing+' processing</span><span>'+n.failed+' failed</span><span>'+n.waiting+' waiting</span></div></div>';}).join("");let errors=exceptions().map(i=>'<div class="exception"><div class="erricon">!</div><div class="grow"><strong>'+esc(i.brand)+' · '+esc(i.error)+'</strong><p>'+esc(i.id)+'</p></div>'+btn("Investigate","open:"+i.id)+"</div>").join("");return heading("Operations Console","Pipeline status, service connectivity, CRM confirmation and exceptions. Full interaction drill-down is in Interaction Explorer.")+'<div class="grid4">'+card("Audio received",data.length,"Unique Genesys conversations")+card("Transcripts complete",tc.completed,tc.processing+" processing · "+tc.failed+" failed")+card("CRM confirmed",ac.completed,ac.processing+" pending · "+ac.failed+" failed")+card("Needs attention",exceptions().length,"Across processing stages")+'</div><div class="layout"><div><div class="card"><div class="card-head"><h2>Processing pipeline</h2>'+btn("↑ Upload audio","manual","primary small")+btn("+ Simulate call","simulate")+'</div>'+bars+'</div><div class="card"><div class="card-head"><h2>Needs attention</h2>'+btn("All diagnostics","diagnostics")+'</div>'+(errors||'<div class="empty">No exceptions</div>')+'</div></div><div><div class="card"><div class="card-head"><h2>Service connectivity</h2></div>'+[["Genesys recording ingestion",connectionTests.genesys?.code==="200"?"healthy":"untested"],["Speech-to-text",connectionTests.stt?.code==="200"?"healthy":"untested"],["Summary intelligence",connectionTests.sum?.code==="200"?"healthy":"untested"],["CRM interface",connectionTests.crm?.code==="200"?"healthy":"untested"],["Output storage",connectionTests.storage?.code==="200"?"healthy":"untested"]].map(([n,s])=>'<div class="service-row"><b>'+n+'</b>'+tag(s)+"</div>").join("")+'</div><div class="card card-pad"><h2>S3 output readiness · simulated</h2><div class="kv"><span>Full transcripts</span><span>"+data.filter(i=>i.trans==="completed").length+" ready to publish</span></div><div class="kv"><span>CRM summaries</span><span>"+data.filter(i=>i.sum==="completed").length+" ready to publish</span></div><p class="hint">Readiness is derived from demo processing status; no S3 upload has occurred. QA.MAFer.AI reads published transcript JSON from S3 independently.</p></div><div class="card card-pad"><h2>CRM safety rule</h2><p class="hint">An acknowledgment timeout is not proof that the update failed. Reconcile with CRM before retrying to avoid duplicate ticket updates.</p></div></div></div>';}
-function current(){return data.find(i=>i.id===selected&&(role==="admin"||i.bu==="VOX"))||data.find(i=>role==="admin"||i.bu==="VOX");}
+function current(){return data.find(i=>i.id===selected&&(role==="admin"||i.bu===leadBU))||data.find(i=>role==="admin"||i.bu===leadBU);}
 function detail(i){
  if(tab==="summary"){
   return '<h3>Reason for contact</h3><p>'+esc(i.reason)+'</p><h3>Issues raised ('+i.issues.length+')</h3>'+
@@ -36,7 +36,7 @@ function detail(i){
  );
  return fields.map(([k,v])=>'<div class="kv"><span>'+esc(k)+'</span><span>'+esc(v)+'</span></div>').join("");
 }
-function interactions(){let i=current();if(!i)return heading("Interactions","No available interactions.");let list=data.filter(x=>(role==="admin"||x.bu==="VOX")&&([x.id,x.agent,x.bu,x.brand,x.ticket||"",x.error].join(" ").toLowerCase().includes(query.toLowerCase()))&&(filter==="all"||(filter==="issues"&&!!x.error)||(filter==="ready"&&x.trans==="completed")));let items=list.map(x=>'<button class="interaction-link '+(x.id===i.id?"active":"")+'" data-open="'+esc(x.id)+'"><span class="grow"><strong>'+esc(x.brand)+" · "+esc(x.agent)+'</strong><small>'+esc(x.id.slice(0,15))+' · '+esc(x.language)+'</small></span>'+tag(x.trans)+"</button>").join("");return heading(role==="admin"?"Interaction Explorer":"My BU Interactions","Transcripts, summaries, customer issues, sentiment, agent observations and CRM ticket references.")+'<div class="layout"><section class="card"><div class="card-head"><h2>Interactions</h2><span class="sub">'+list.length+' results</span></div><div class="toolbar"><input class="input" id="search" placeholder="Search conversation, agent, brand or ticket" value="'+esc(query)+'"/><select id="filter"><option value="all">All statuses</option><option value="issues" '+(filter==="issues"?"selected":"")+'>Needs attention</option><option value="ready" '+(filter==="ready"?"selected":"")+'>Completed transcripts</option></select></div><div class="interaction-list">'+(items||'<div class="empty">No matching interactions.</div>')+'</div></section><section class="card"><div class="detail-header"><strong>'+esc(i.brand)+" · "+esc(i.agent)+'</strong><div class="sub mono">'+esc(i.id)+'</div><div class="pill-group" style="margin-top:10px">'+tag(i.trans)+tag(i.sum)+tag(i.crm)+(i.manualRun?'<span class="tag info">Manual upload · '+esc(i.manualRun.status)+'</span>':"")+'</div></div><div class="tabs">'+[["summary","Summary"],["transcript","Full Transcript"],["metadata","Metadata"],["status","Processing Status"]].map(([k,n])=>'<button class="tab '+(tab===k?"active":"")+'" data-tab="'+k+'">'+n+"</button>").join("")+'</div><div class="detail-content">'+detail(i)+'<div class="downloads">'+btn("↓ Transcript .doc","export-transcript")+btn("↓ Summary .doc","export-summary")+(role==="admin"?btn("↓ JSON","export-json"):"")+'</div></div>'+(i.trans==="failed"||i.sum==="failed"?'<div class="action-footer"><div><b>Manual recovery</b><div class="sub">Attach the original audio to stage a retry for this Conversation ID.</div></div>'+btn("↑ Upload audio to retry","manual-retry:"+i.id,"primary small")+'</div>':role==="admin"?'<div class="action-footer"><div><b>Admin investigation</b><div class="sub">'+esc(i.error||"No technical exception")+'</div></div>'+(i.ack==="failed"?btn("Reconcile CRM","reconcile","primary small"):i.crm==="unmatched"?btn("Review mapping","mapping","primary small"):btn("View diagnostics","diagnostics"))+'</div>':"")+"</section></div>";}
+function interactions(){let i=current();if(!i)return heading("Interactions","No available interactions.");let list=data.filter(x=>(role==="admin"||x.bu===leadBU)&&([x.id,x.agent,x.bu,x.brand,x.ticket||"",x.error].join(" ").toLowerCase().includes(query.toLowerCase()))&&(filter==="all"||(filter==="issues"&&!!x.error)||(filter==="ready"&&x.trans==="completed")));let items=list.map(x=>'<button class="interaction-link '+(x.id===i.id?"active":"")+'" data-open="'+esc(x.id)+'"><span class="grow"><strong>'+esc(x.brand)+" · "+esc(x.agent)+'</strong><small>'+esc(x.id.slice(0,15))+' · '+esc(x.language)+'</small></span>'+tag(x.trans)+"</button>").join("");return heading(role==="admin"?"Interaction Explorer":"My BU Interactions","Transcripts, summaries, customer issues, sentiment, agent observations and CRM ticket references.")+'<div class="layout"><section class="card"><div class="card-head"><h2>Interactions</h2><span class="sub">'+list.length+' results</span></div><div class="toolbar"><input class="input" id="search" placeholder="Search conversation, agent, brand or ticket" value="'+esc(query)+'"/><select id="filter"><option value="all">All statuses</option><option value="issues" '+(filter==="issues"?"selected":"")+'>Needs attention</option><option value="ready" '+(filter==="ready"?"selected":"")+'>Completed transcripts</option></select></div><div class="interaction-list">'+(items||'<div class="empty">No matching interactions.</div>')+'</div></section><section class="card"><div class="detail-header"><strong>'+esc(i.brand)+" · "+esc(i.agent)+'</strong><div class="sub mono">'+esc(i.id)+'</div><div class="pill-group" style="margin-top:10px">'+tag(i.trans)+tag(i.sum)+tag(i.crm)+(i.manualRun?'<span class="tag info">Manual upload · '+esc(i.manualRun.status)+'</span>':"")+'</div></div><div class="tabs">'+[["summary","Summary"],["transcript","Full Transcript"],["metadata","Metadata"],["status","Processing Status"]].map(([k,n])=>'<button class="tab '+(tab===k?"active":"")+'" data-tab="'+k+'">'+n+"</button>").join("")+'</div><div class="detail-content">'+detail(i)+'<div class="downloads">'+btn("↓ Transcript .doc","export-transcript")+btn("↓ Summary .doc","export-summary")+(role==="admin"?btn("↓ JSON","export-json"):"")+'</div></div>'+(i.trans==="failed"||i.sum==="failed"?'<div class="action-footer"><div><b>Manual recovery</b><div class="sub">Attach the original audio to stage a retry for this Conversation ID.</div></div>'+btn("↑ Upload audio to retry","manual-retry:"+i.id,"primary small")+'</div>':role==="admin"?'<div class="action-footer"><div><b>Admin investigation</b><div class="sub">'+esc(i.error||"No technical exception")+'</div></div>'+(i.ack==="failed"?btn("Reconcile CRM","reconcile","primary small"):i.crm==="unmatched"?btn("Review mapping","mapping","primary small"):btn("View diagnostics","diagnostics"))+'</div>':"")+"</section></div>";}
 const field=(lab,key,val,opts)=>'<div class="field"><label>'+lab+'</label>'+(opts?'<select data-setting="'+key+'">'+opts.map(o=>'<option value="'+esc(o)+'" '+(o===val?"selected":"")+'>'+esc(o)+"</option>").join("")+"</select>":'<input data-setting="'+key+'" value="'+esc(val)+'"/>')+"</div>";
 
 const connectionProfiles=JSON.parse(JSON.stringify(seed.connectionProfiles));
@@ -109,11 +109,11 @@ function render(){
   config:"Config Console","eq-framework":"Agent EQ Framework","problem-framework":"Problem-Solving Framework",
   diagnostics:"AI Usage & Diagnostics"};
  document.querySelector("#crumb").textContent=labels[page];
- const views={operations,manual:()=>window.MAFerManualAudio.render(role,data),interactions,config,diagnostics,
-  "eq-framework":()=>window.MAFerFrameworks.render("eq",{role,bu:"VOX"}),
-  "problem-framework":()=>window.MAFerFrameworks.render("problem",{role,bu:"VOX"})};
+ const views={operations,manual:()=>window.MAFerManualAudio.render(role,data,leadBU),interactions,config,diagnostics,
+  "eq-framework":()=>window.MAFerFrameworks.render("eq",{role,bu:leadBU}),
+  "problem-framework":()=>window.MAFerFrameworks.render("problem",{role,bu:leadBU})};
  document.querySelector("#app").innerHTML=views[page]();
- document.querySelector("#role").value=role;
+ document.querySelector("#role").value=role==="lead"?"lead-"+leadBU:"admin";
  document.querySelector("#sidebar").classList.remove("open");
 }
 function exportSample(kind){
@@ -150,13 +150,13 @@ function exportSample(kind){
 function act(a){
  if(a.startsWith("open:")){
   const id=a.slice(5),i=data.find(x=>x.id===id);
-  if(!i||(role==="lead"&&i.bu!=="VOX"))return toast("Access denied.");
+  if(!i||(role==="lead"&&i.bu!==leadBU))return toast("Access denied.");
   selected=id;tab="summary";page="interactions";render();return;
  }
  if(a.startsWith("export-"))return exportSample(a);
  if(a==="manual"){page="manual";render();return;}
  if(a.startsWith("manual-retry:")){
-  const result=window.MAFerManualAudio.prefillRetry(a.slice("manual-retry:".length),role,data);
+  const result=window.MAFerManualAudio.prefillRetry(a.slice("manual-retry:".length),role,data,leadBU);
   if(result.render){page="manual";render();}
   if(result.message)toast(result.message);
   return;
@@ -190,14 +190,14 @@ document.addEventListener("click",e=>{
   const action=manual.dataset.manualAction;
   if(action==="clear"){window.MAFerManualAudio.reset();render();toast("Manual upload form cleared.");return;}
   if(action==="stage"){
-   const result=window.MAFerManualAudio.stageRun(role,data);
+   const result=window.MAFerManualAudio.stageRun(role,data,leadBU);
    if(result.id)selected=result.id;
    if(result.render)render();
    if(result.message)toast(result.message);
    return;
   }
   if(action==="submit"){
-   window.MAFerManualAudio.submit(role,data).then(result=>{
+   window.MAFerManualAudio.submit(role,data,leadBU).then(result=>{
     if(result.render)render();
     if(result.message)toast(result.message);
    }).catch(()=>toast("Manual processing request failed."));
@@ -232,7 +232,7 @@ document.addEventListener("change",e=>{
   return;
  }
  if(t.dataset.manualField&&page==="manual"){
-  const result=window.MAFerManualAudio.update(t.dataset.manualField,t.value,role,data);
+  const result=window.MAFerManualAudio.update(t.dataset.manualField,t.value,role,data,leadBU);
   if(result.render)render();
   if(result.message)toast(result.message);
   return;
@@ -246,10 +246,14 @@ document.addEventListener("change",e=>{
   return;
  }
  if(t.id==="role"){
-  role=t.value==="lead"?"lead":"admin";
+  const next=String(t.value||"");
+  if(next==="admin")role="admin";
+  else if(next.startsWith("lead-")&&["VOX","SHARE","AMBU","Retail"].includes(next.slice(5))){
+   role="lead";leadBU=next.slice(5);
+  }else return;
   window.MAFerManualAudio.reset();
   page=role==="lead"?"interactions":"operations";
-  selected=role==="lead"?(data.find(i=>i.bu==="VOX")?.id||""):data[0]?.id||"";
+  selected=role==="lead"?(data.find(i=>i.bu===leadBU)?.id||""):data[0]?.id||"";
   render();
  }
  else if(t.id==="filter"){filter=t.value;render();}
@@ -261,7 +265,7 @@ document.addEventListener("change",e=>{
 document.addEventListener("input",e=>{
  const t=e.target;
  if(t.dataset.manualField&&page==="manual"){
-  window.MAFerManualAudio.update(t.dataset.manualField,t.value,role,data);
+  window.MAFerManualAudio.update(t.dataset.manualField,t.value,role,data,leadBU);
   return;
  }
  if(t.id==="search"){
