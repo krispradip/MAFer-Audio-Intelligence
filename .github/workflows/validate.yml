@@ -16,15 +16,22 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check sample-data.js
+          node --check frameworks.js
           node --check app.js
+          node --check tests/smoke.cjs
       - name: Validate required files and UI wiring
         run: |
           test -s index.html
           test -s styles.css
           test -s sample-data.js
           test -s app.js
+          test -s frameworks.js
+          test -s tests/smoke.cjs
           test -s docs/ARCHITECTURE.md
           grep -q 'sample-data.js' index.html
+          grep -q 'frameworks.js' index.html
           grep -q 'app.js' index.html
           grep -q 'styles.css' index.html
           echo "Prototype file checks passed."
+      - name: Run framework and UI smoke tests
+        run: node tests/smoke.cjs
