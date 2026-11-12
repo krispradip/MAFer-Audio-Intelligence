@@ -45,6 +45,8 @@ assert.ok(app().includes("Mandatory — start/end per segment"),"Timestamp requi
 assert.ok(app().includes("CRM Summary Intelligence"),"Summary configuration visible");
 assert.ok(app().includes("Did the customer leave the call happy?"),"Sentiment asks only about customer outcome at close");
 assert.ok(app().includes("EQ look-fors"),"EQ cues are visible as non-QA observations");
+assert.ok(app().includes("EQ look-fors · not QA criteria"),"EQ guidance is separated from QA parameters");
+assert.ok(app().includes("Acknowledges the customer"),"EQ guidance describes what to look for");
 assert.ok(app().includes("Prompt version"),"Summary prompt version visible");
 assert.ok(!app().includes("secretRef"),"No secret reference in intelligence view");
 assert.ok(!app().includes("https://stt-demo.example.invalid"),"No API endpoint exposed");
