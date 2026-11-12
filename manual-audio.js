@@ -31,6 +31,7 @@ function update(field,value,role,data){
 function prefillRetry(id,role,data){
  const i=failed(role,data).find(x=>x.id===id);
  if(!i)return {message:"Interaction is not eligible for manual retry."};
+ clearFile();
  form.mode="retry";form.retryId=i.id;form.bu=i.bu;form.brand=i.brand||i.bu;form.agent=i.agent||"Manual Agent";form.market=i.market||"UAE";
  form.language=LANG.includes(i.language)?i.language:"Auto-detect";
  stage={status:"idle",id:"",message:"Attach audio for "+i.id+"."};
