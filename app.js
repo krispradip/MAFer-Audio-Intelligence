@@ -111,57 +111,27 @@ function config(){
 }
 
 function diagnostics(){let events=[["10:42","Transcription","HTTP 503","SERVICE_UNAVAILABLE",data[3].id],["10:38","Summarization","HTTP 429","QUOTA_OR_RATE_LIMIT",data[2].id],["10:29","CRM response","HTTP 504","RESPONSE_TIMEOUT",data[4].id],["10:21","CRM mapping","Internal","CRM_MAPPING_NOT_FOUND",data[1].id]];return heading("AI Usage & Diagnostics","Transcription minutes, LLM token usage, stage-specific failures and provider error codes.")+'<div class="grid4">'+card("Audio minutes","7,260","Synthetic metering")+card("LLM input","1.82M","Tokens · synthetic")+card("LLM output","310K","Tokens · synthetic")+card("Attention required",exceptions().length,"Current mockup exceptions")+'</div><div class="grid2"><div class="card"><div class="card-head"><h2>Token usage</h2></div><div class="bars">'+[[68,22],[84,30],[77,28],[95,35],[71,24]].map(v=>'<div class="bar-group"><span style="height:'+v[0]+'%"></span><span style="height:'+v[1]+'%"></span></div>').join("")+'</div><div class="axis"><span>08 Nov</span><span>09 Nov</span><span>10 Nov</span><span>11 Nov</span><span>12 Nov</span></div></div><div class="card card-pad"><h2>Observability requirements</h2><p class="hint">Log provider, stage, actual HTTP code, sanitized error body, request ID, retries, latency, audio minutes, model tokens, quota utilization and CRM acknowledgment status.</p><div class="callout">An unacknowledged CRM update requires reconciliation before retrying.</div></div></div><div class="card"><div class="card-head"><h2>Diagnostic event log</h2></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Stage</th><th>Response</th><th>Diagnostic</th><th>Action</th></tr></thead><tbody>'+events.map(e=>'<tr><td>'+e[0]+'</td><td>'+e[1]+'</td><td>'+e[2]+'</td><td>'+e[3]+'</td><td>'+btn("Investigate","open:"+e[4])+"</td></tr>").join("")+"</tbody></table></div></div>";}
-function intelligenceConfig(){
- const stt=serviceProfiles.stt.find(p=>p.active)||serviceProfiles.stt[0]||{};
- const sum=serviceProfiles.sum.find(p=>p.active)||serviceProfiles.sum[0]||{};
- const view=(label,value)=>'<div class="kv"><span>'+esc(label)+'</span><span>'+esc(value||"Not configured")+'</span></div>';
- const status='<span class="tag muted">Demo configuration · not live</span>';
- const leadNote=role==="lead"?' · '+esc(leadBU)+' BU view':"";
- return heading("Intelligence Configuration","Read-only overview of transcription, customer closing sentiment and EQ observation guidance"+leadNote+". QA assessment rules are managed separately in QA.MAFer.AI.")+
-  '<div class="grid2">'+
-  '<section class="card"><div class="card-head"><h2>Speech-to-Text</h2>'+status+'</div><div class="form-section">'+
-   view("Configured engine",stt.name)+view("Service type",stt.service)+view("Model / deployment",stt.model)+
-   view("Supported languages",stt.language)+view("Speaker identification",stt.speakers)+view("Timestamp policy","Mandatory — start/end per segment, milliseconds")+
-   '<div class="callout">Every spoken segment MUST include original-language text, a speaker label, and audio-relative start/end timestamps. Missing, invalid or out-of-range timestamps block transcription completion and downstream publication. Select only an engine that supports time-aligned output; this is not a QA scoring option.</div>'+
-  '</div></section>'+
-  '<section class="card"><div class="card-head"><h2>CRM Summary Intelligence</h2>'+status+'</div><div class="form-section">'+
-   view("Configured engine",sum.name)+view("Service type",sum.service)+view("Model / deployment",sum.model)+
-   view("Summary language",sum.language)+view("Prompt version",sum.prompt)+view("Output schema",sum.schema)+
-    view("Customer sentiment question","Did the customer leave the call happy?")+view("Closing sentiment outcomes","Happy · Unhappy · Neutral · Unclear")+
-    view("EQ look-fors",signals.EQ_CUES.join(" · "))+
-   '<div class="callout">Extracts contact reasons, distinct issues, factual actions, resolution and next steps. Separately identifies whether the customer left happy, unhappy, neutral or unclear using closing customer evidence. EQ cues are optional descriptive observations linked to agent dialogue, never QA criteria, scores, failures or grades.</div>'+
-  '</div></section></div>'+
-  '<div class="grid2" style="margin-top:16px">'+
-  '<section class="card card-pad"><h2>Customer closing sentiment</h2><p class="hint">One question only: Did the customer leave the call happy?</p>'+
-   [['Happy','Explicit satisfaction at close'],['Unhappy','Explicit dissatisfaction at close'],['Neutral','Accepts next steps without clear happiness or dissatisfaction'],['Unclear','No reliable customer closing evidence']].map(([label,desc])=>'<div class="kv"><span>'+esc(label)+'</span><span>'+esc(desc)+'</span></div>').join("")+
-   '<p class="hint">Use the customer’s own closing words and their STT timestamps. Never assume happiness from a polite farewell or a resolved issue.</p></section>'+
-  '<section class="card card-pad"><h2>EQ look-fors · not QA criteria</h2>'+
-   signals.EQ_GUIDANCE.map(item=>'<div class="issue"><b>'+esc(item.cue)+'</b><p>'+esc(item.lookFor)+'</p></div>').join("")+
-   '<p class="hint">Record only observable, evidence-backed examples. No scores, weights, failures, grades or agent evaluation.</p></section>'+
-  '</div>'+
-  '<section class="card card-pad"><h2>Configuration ownership</h2><p class="hint">Business Unit Leads can inspect the configured processing capabilities but cannot edit provider settings, credentials or infrastructure connections. Platform Admin manages configuration in Config Console. This prototype does not verify actual provider availability or run real transcription.</p></section>';
-}
 function toast(msg){let t=document.querySelector("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(window.__tid);window.__tid=setTimeout(()=>t.classList.remove("show"),3500);}
 function render(){
- const leadPages=["interactions","manual","intelligence"];
+ const leadPages=["interactions","manual"];
  if(role==="lead"&&!leadPages.includes(page))page="interactions";
  const nav=role==="admin"?[
   ["operations","▦","Operations Console"],["manual","↑","Manual Audio Upload"],
-  ["interactions","◉","Interaction Explorer"],["intelligence","✦","Intelligence Configuration"],
+  ["interactions","◉","Interaction Explorer"],
   ["config","⚙","Config Console"],["diagnostics","◷","AI Usage & Diagnostics"]
  ]:[
   ["interactions","◉","My BU Interactions"],["manual","↑","Manual Audio Upload"],
-  ["intelligence","✦","Intelligence Configuration"]
+  
  ];
  document.querySelector("#nav").innerHTML=nav.map(([key,icon,name])=>
-  (key==="intelligence"?'<div class="nav-label fw-nav-label">PROCESSING CONFIGURATION</div>':"")+
+  
   '<button class="nav-item '+(page===key?"active":"")+'" data-nav="'+key+'"><i>'+icon+"</i>"+name+"</button>"
  ).join("");
  const labels={operations:"Operations Console",manual:"Manual Audio Upload",interactions:"Interaction Explorer",
-  intelligence:"Intelligence Configuration",config:"Config Console",diagnostics:"AI Usage & Diagnostics"};
+  config:"Config Console",diagnostics:"AI Usage & Diagnostics"};
  document.querySelector("#crumb").textContent=labels[page];
  const views={operations,manual:()=>window.MAFerManualAudio.render(role,data,leadBU),interactions,
-  intelligence:intelligenceConfig,config,diagnostics};
+  config,diagnostics};
  document.querySelector("#app").innerHTML=views[page]();
  document.querySelector("#role").value=role==="lead"?"lead-"+leadBU:"admin";
  document.querySelector("#sidebar").classList.remove("open");
