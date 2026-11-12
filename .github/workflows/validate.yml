@@ -16,21 +16,26 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check sample-data.js
+          node --check transcript-contract.js
           node --check manual-audio.js
           node --check app.js
           node --check tests/smoke.cjs
           node --check tests/manual-audio.cjs
+          node --check tests/timestamps.cjs
       - name: Validate required files and UI wiring
         run: |
           test -s index.html
           test -s styles.css
           test -s sample-data.js
+          test -s transcript-contract.js
           test -s app.js
           test -s manual-audio.js
           test -s tests/smoke.cjs
           test -s tests/manual-audio.cjs
+          test -s tests/timestamps.cjs
           test -s docs/ARCHITECTURE.md
           grep -q 'sample-data.js' index.html
+          grep -q 'transcript-contract.js' index.html
           ! grep -q 'frameworks.js' index.html
           grep -q 'Intelligence Configuration' app.js
           grep -q 'manual-audio.js' index.html
@@ -41,3 +46,4 @@ jobs:
         run: |
           node tests/smoke.cjs
           node tests/manual-audio.cjs
+          node tests/timestamps.cjs
