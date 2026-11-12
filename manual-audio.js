@@ -51,8 +51,8 @@ function stageRun(role,data,leadBU="VOX"){
    language:form.language,agentCountry:"Unknown",callerCountry:"Unknown",duration:"Unknown",ticket:null,
    trans:"waiting",sum:"waiting",crm:"waiting",ack:"waiting",reason:"Awaiting transcription.",
    summary:"No transcript or summary generated.",actions:"Pending transcription.",next:"Awaiting processing service.",
-   sentiment:"Not assessed",eq:"Not assessed",reasoning:"Not assessed",issues:[],lines:[],error:"",
-   source:"Manual audio upload",frameworkEvidence:null};
+   sentiment:"Not assessed",issues:[],lines:[],error:"",
+   source:"Manual audio upload"};
  }
  record.manualRun={status:"staged",fileName:file.name,fileSize:file.size,fileType:file.type||"unknown",
   attempt:(record.manualRun?.attempt||0)+1,createdAt:new Date().toISOString(),
