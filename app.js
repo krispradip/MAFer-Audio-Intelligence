@@ -131,6 +131,14 @@ function intelligenceConfig(){
     view("EQ look-fors",signals.EQ_CUES.join(" · "))+
    '<div class="callout">Extracts contact reasons, distinct issues, factual actions, resolution and next steps. Separately identifies whether the customer left happy, unhappy, neutral or unclear using closing customer evidence. EQ cues are optional descriptive observations linked to agent dialogue, never QA criteria, scores, failures or grades.</div>'+
   '</div></section></div>'+
+  '<div class="grid2" style="margin-top:16px">'+
+  '<section class="card card-pad"><h2>Customer closing sentiment</h2><p class="hint">One question only: Did the customer leave the call happy?</p>'+
+   [['Happy','Explicit satisfaction at close'],['Unhappy','Explicit dissatisfaction at close'],['Neutral','Accepts next steps without clear happiness or dissatisfaction'],['Unclear','No reliable customer closing evidence']].map(([label,desc])=>'<div class="kv"><span>'+esc(label)+'</span><span>'+esc(desc)+'</span></div>').join("")+
+   '<p class="hint">Use the customer’s own closing words and their STT timestamps. Never assume happiness from a polite farewell or a resolved issue.</p></section>'+
+  '<section class="card card-pad"><h2>EQ look-fors · not QA criteria</h2>'+
+   signals.EQ_GUIDANCE.map(item=>'<div class="issue"><b>'+esc(item.cue)+'</b><p>'+esc(item.lookFor)+'</p></div>').join("")+
+   '<p class="hint">Record only observable, evidence-backed examples. No scores, weights, failures, grades or agent evaluation.</p></section>'+
+  '</div>'+
   '<section class="card card-pad"><h2>Configuration ownership</h2><p class="hint">Business Unit Leads can inspect the configured processing capabilities but cannot edit provider settings, credentials or infrastructure connections. Platform Admin manages configuration in Config Console. This prototype does not verify actual provider availability or run real transcription.</p></section>';
 }
 function toast(msg){let t=document.querySelector("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(window.__tid);window.__tid=setTimeout(()=>t.classList.remove("show"),3500);}
