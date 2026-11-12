@@ -47,6 +47,13 @@ assert.equal(before,JSON.stringify({id:failedVox.id,trans:failedVox.trans,sum:fa
 assert.equal(failedVox.manualRun.status,"staged");
 assert.ok(!manual.prefillRetry(failedOther.id,"lead",data).render,"BU Lead cannot retry another BU");
 manual.reset();
+assert.ok(manual.render("lead",data,"SHARE").includes("SHARE · Your business unit"));
+manual.chooseFile(audio);
+const shareRun=manual.stageRun("lead",data,"SHARE");
+assert.equal(shareRun.render,true);
+assert.equal(data[0].bu,"SHARE","SHARE BU Lead can only create SHARE interactions");
+assert.ok(!manual.prefillRetry(failedVox.id,"lead",data,"SHARE").render,"SHARE lead cannot retry VOX job");
+manual.reset();
 assert.ok(revoked>=2,"Browser object URLs are revoked on reset/replacement");
 console.log("Manual audio tests passed: validation, role scope, staging, gated upload, same-origin API and safe retries.");
 })().catch(error=>{console.error(error);process.exitCode=1;});
