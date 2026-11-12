@@ -61,3 +61,18 @@ Reuse existing corporate PostgreSQL infrastructure if capacity, security and lif
 ## User permissions
 
 BU Leads see their BU interactions, full transcripts and CRM summaries and can download human-readable Word documents. They do not receive JSON export or technical configuration access. Platform Admins can export JSON for troubleshooting. Production permissions must be enforced by backend authorization, not just hidden UI buttons.
+
+## Governed intelligence frameworks
+
+The standalone transcription product includes **two distinct, configuration-driven behavioural analysis frameworks**. They are **not** QA rubrics, and no reference document upload is required for the first version:
+
+1. **Agent EQ Framework:** empathy and acknowledgement, active listening, composed responses, de-escalation, ownership/reassurance, and respectful communication.
+2. **Problem-Solving Framework:** issue identification, diagnostic questioning, structured reasoning, solution relevance, next-step clarity, and resolution verification.
+
+Each dimension stores an identifier, name, observable definition, positive evidence examples, exclusions/guardrails, and an enabled flag. A framework also stores its language policy (English, Arabic or bilingual), evaluator instructions, evidence requirements, scope, status and immutable published version. The enterprise baseline applies by default; a BU can have a separately published override. In production, overrides and baseline updates need an explicit governance/approval policy.
+
+**Evaluation contract:** for each applicable dimension, output `Observed`, `Not Observed`, or `Not Assessable`, a brief grounded explanation, original-language dialogue quote, timestamp(s), and evidence provenance. Never equate lack of transcript evidence with a negative finding. Do not infer emotional state, IQ, vocal tone or completed CRM actions from transcript-only evidence. Arabic dialect and English/Arabic code-switching must not be penalised.
+
+**Version pinning:** when summarization begins, resolve the published framework version applicable to the interaction's BU and persist the version IDs in the processing job. Store the exact versions and findings in `summary.json` / `metadata.json` with the Genesys Conversation ID and transcript version. Publishing a new framework does not change historical assessments; explicit reprocessing creates a new evaluation version. QA.MAFer.AI retains independent ownership of formal QA scores and rubrics.
+
+**Current mockup:** the Admin pages allow editing, local draft save, BU override creation and demo publishing. Published history is browser-local and does not constitute a shared or immutable audit log. The example evidence is fixed synthetic data; no live LLM call is made from these screens. The production backend must enforce schema validation, role checks, approvals, immutable version storage and controlled execution.
