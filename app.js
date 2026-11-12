@@ -146,19 +146,10 @@ function exportSample(kind){
  if(kind==="export-transcript"&&i.trans!=="completed")return toast("Transcript is not yet completed.");
  if(kind==="export-summary"&&i.sum!=="completed")return toast("Summary is not yet completed.");
  const metadata="<p><b>Genesys Conversation ID:</b> "+esc(i.id)+"<br><b>CRM Ticket:</b> "+esc(i.ticket||"Not matched")+"<br><b>Agent:</b> "+esc(i.agent)+"<br><b>Business unit / brand:</b> "+esc(i.bu)+" / "+esc(i.brand)+"<br><b>Language:</b> "+esc(i.language)+"</p>";
- const evidence=()=>{
-  const types=[["eq","EQ behaviour observations"],["problem","Problem-solving observations"]];
-  return types.map(([key,title])=>{
-   const r=i.frameworkEvidence?.[key];
-   if(!r)return "<h2>"+title+"</h2><p>Not Assessable from the available sample.</p>";
-   const rows=(r.observations||[]).map(o=>"<li><b>"+esc(o.dimension)+" — "+esc(o.status)+"</b>"+(o.note?"<p>"+esc(o.note)+"</p>":"")+(o.quote?"<p><i>"+esc(o.time||"")+" · "+esc(o.language||i.language)+":</i> "+esc(o.quote)+"</p>":"")+"</li>").join("");
-   return "<h2>"+title+" (framework v"+esc(r.version)+", "+esc(r.scope)+")</h2><ul>"+rows+"</ul>";
-  }).join("");
- };
  const transcript=i.lines.map(l=>"<p><b>"+esc(l[0])+" · "+esc(l[1])+":</b> "+esc(l[2])+"</p>").join("");
- const summary="<h2>Reason for contact</h2><p>"+esc(i.reason)+"</p><h2>Customer issues ("+i.issues.length+")</h2><ul>"+i.issues.map(x=>"<li>"+esc(x.name)+" — "+esc(x.status)+"</li>").join("")+"</ul><h2>Post-call summary</h2><p>"+esc(i.summary)+"</p><h2>Sentiment</h2><p>"+esc(i.sentiment)+"</p>"+evidence();
+ const summary="<h2>Reason for contact</h2><p>"+esc(i.reason)+"</p><h2>Customer issues ("+i.issues.length+")</h2><ul>"+i.issues.map(x=>"<li>"+esc(x.name)+" — "+esc(x.status)+"</li>").join("")+"</ul><h2>Post-call summary</h2><p>"+esc(i.summary)+"</p><h2>Model-inferred sentiment</h2><p>"+esc(i.sentiment)+"</p>";
  const title=kind==="export-transcript"?"Full Interaction Transcript":"CRM Post-call Summary";
- const html="<html><head><meta charset='utf-8'></head><body><h1>"+title+"</h1>"+metadata+(kind==="export-transcript"?transcript:summary)+"<p><small>SYNTHETIC PROTOTYPE DOCUMENT. Production will generate native DOCX. Observations are not psychometric EQ/IQ scores or formal QA assessments.</small></p></body></html>";
+ const html="<html><head><meta charset='utf-8'></head><body><h1>"+title+"</h1>"+metadata+(kind==="export-transcript"?transcript:summary)+"<p><small>SYNTHETIC PROTOTYPE DOCUMENT. Production will generate native DOCX. This document is a transcription/summary artifact, not a QA assessment.</small></p></body></html>";
  const blob=new Blob(["\ufeff",html],{type:"application/msword"});
  const url=URL.createObjectURL(blob),a=document.createElement("a");
  a.href=url;a.download=(kind==="export-transcript"?"transcript":"summary")+".doc";a.click();
@@ -224,15 +215,6 @@ document.addEventListener("click",e=>{
   }
   if(action==="open"){page="interactions";tab="summary";render();return;}
  }
- const fw=e.target.closest("[data-fw-action]");
- if(fw){
-  if(role!=="admin"||!["eq-framework","problem-framework"].includes(page))return toast("Admin access required.");
-  const type=page==="eq-framework"?"eq":"problem";
-  const result=window.MAFerFrameworks.action(type,fw.dataset.fwAction,fw.dataset.fwIndex);
-  if(result?.render)render();
-  if(result?.message)toast(result.message);
-  return;
- }
  const n=e.target.closest("[data-nav]"),a=e.target.closest("[data-action]"),
        o=e.target.closest("[data-open]"),t=e.target.closest("[data-tab]"),
        c=e.target.closest("[data-cfg]");
@@ -254,14 +236,6 @@ document.addEventListener("change",e=>{
   const result=window.MAFerManualAudio.update(t.dataset.manualField,t.value,role,data,leadBU);
   if(result.render)render();
   if(result.message)toast(result.message);
-  return;
- }
- if((t.id==="fw-scope"||t.dataset.fwField)&&["eq-framework","problem-framework"].includes(page)){
-  if(role!=="admin")return toast("Admin access required.");
-  const type=page==="eq-framework"?"eq":"problem";
-  const result=window.MAFerFrameworks.change(type,t);
-  if(result?.render)render();
-  if(result?.message)toast(result.message);
   return;
  }
  if(t.id==="role"){
