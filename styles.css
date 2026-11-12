@@ -32,3 +32,23 @@
 .fw-evidence q{color:#314a70;white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:900px){.fw-result-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.fw-summary{align-items:flex-start}.fw-dimension-head{align-items:flex-start}.fw-fields{padding:12px}.fw-actions{justify-content:stretch}.fw-actions .button{flex:1}}
+
+
+/* Manual audio upload: file preview, metadata and controlled recovery */
+.manual-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:17px}
+.manual-metrics .mini-metric{padding:14px 16px}
+.manual-metrics .mini-metric b{font-size:11px;color:#314968}
+.manual-metrics .mini-metric p{font-size:11px;color:#7d90a8;margin:7px 0 0}
+.manual-drop{display:flex;flex-direction:column;gap:8px;align-items:flex-start;border:2px dashed #b7cdeb;border-radius:13px;background:#f7faff;padding:22px;cursor:pointer}
+.manual-drop:hover{border-color:#618ce2;background:#f1f6ff}
+.manual-drop b{font-size:14px;color:#294e83}
+.manual-drop small{font-size:11px;color:#8495ae}
+.manual-drop input{width:100%;max-width:100%;border:0;padding:8px 0;font-size:11px;background:transparent}
+.manual-file-info{display:flex;flex-direction:column;gap:3px;padding:12px 0;color:#354c6e;overflow-wrap:anywhere}
+.manual-file-info small{font-size:11px;color:#7f90a5}
+.manual-player{display:block;width:100%;margin:6px 0 2px;min-height:48px}
+.manual-grid .manual-full{grid-column:1/-1}
+.manual-actions{display:flex;justify-content:flex-end;align-items:center;gap:9px;flex-wrap:wrap;margin:2px 0 22px}
+.manual-actions .button{white-space:normal}
+@media(max-width:1150px){.manual-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.manual-metrics{grid-template-columns:1fr}.manual-actions{justify-content:stretch}.manual-actions .button{flex:1}}
