@@ -10,7 +10,7 @@ window.SEED = {
  {id:"e812a492-206c-4d32-86cd-a0f000000007",bu:"Retail",brand:"Carrefour",market:"UAE",agent:"Demo Agent G",agentCountry:"UAE (work location)",callerCountry:"Unknown",language:"English",duration:"04:35",time:"09:37",issues:[{name:"Missing delivery item",status:"Replacement requested"}],reason:"Missing item in delivery.",actions:"Agent initiated a replacement request.",next:"Confirm replacement delivery.",summary:"The customer raised a missing-item issue. The agent explained replacement next steps.",sentiment:"Negative → Neutral",eq:"Apologized and acknowledged the inconvenience.",reasoning:"Identified fulfillment issue and resolution path.",lines:[["00:05","Customer","One item was missing from my grocery order."],["00:18","Agent","I'm sorry. I'll review the order and help with a replacement."]],trans:"completed",sum:"completed",crm:"confirmed",ack:"confirmed",ticket:"DEMO-C4C-107",error:""}
  ],
  services:{stt:{name:"Primary Speech Engine",provider:"Amazon Transcribe",model:"AWS managed speech service",region:"me-central-1",connection:"stt-primary",language:"English + Gulf Arabic / multilingual",speaker:"Channel ID when available",timeout:"120",retries:"2",status:"healthy"},sum:{name:"Summary Intelligence",provider:"Corporate OpenAI via APIM",model:"gpt-4o",region:"Corporate APIM",connection:"apim-summary",language:"English + original language",schema:"v1",prompt:"v1.3",tokens:"2500",timeout:"95",retries:"2",status:"healthy"}},
- connections:[{name:"Genesys recording ingestion",kind:"Source",profile:"genesys-s3-ingestion",status:"healthy",note:"S3 export and event queue · demo"},{name:"CRM ticket updates",kind:"Destination",profile:"crm-c4c-approved",status:"degraded",note:"Mapping and acknowledgment require CRM integration"},{name:"QA.MAFer.AI handoff",kind:"Destination",profile:"qa-transcript-api",status:"healthy",note:"Transcript JSON downstream; separate scoring"},{name:"DOCX / JSON storage",kind:"Storage",profile:"audio-intelligence-outputs",status:"healthy",note:"BU / Brand / Market / Date / Conversation ID"}]
+ connections:[{name:"Genesys recording ingestion",kind:"Source",profile:"genesys-s3-ingestion",status:"healthy",note:"S3 export and event queue · demo"},{name:"CRM ticket updates",kind:"Destination",profile:"crm-c4c-approved",status:"degraded",note:"Mapping and acknowledgment require CRM integration"},{name:"DOCX / JSON storage",kind:"Storage",profile:"audio-intelligence-outputs",status:"healthy",note:"BU / Brand / Market / Date / Conversation ID"}]
 };
 
 /* Non-sensitive SAMPLE configuration. No API credentials are included. */
@@ -72,4 +72,41 @@ window.SEED.connectionProfiles = {
     auth:"AWS IAM role",
     secretRef:"demo/audio/output-writer"
   }
+};
+
+
+/* Fixed synthetic examples: version-pinned observations, not live LLM output.
+   Quotes are drawn from the exact demo transcript excerpts above. */
+window.SEED.interactions[0].frameworkEvidence = {
+  eq:{version:"1.0",scope:"All BUs",observations:[
+    {dimension:"Empathy & acknowledgement",status:"Observed",time:"00:16",language:"English",quote:"I understand the concern. Let me check the booking and explain the next steps.",note:"The agent explicitly acknowledges the customer's concern; emotional state cannot be inferred."}
+  ]},
+  problem:{version:"1.0",scope:"All BUs",observations:[
+    {dimension:"Next-step clarity",status:"Observed",time:"00:16",language:"English",quote:"I understand the concern. Let me check the booking and explain the next steps.",note:"The agent proposes a next action. Completion of any booking or refund action is not verified."},
+    {dimension:"Resolution verification",status:"Not Assessable",note:"The supplied transcript excerpt contains no verified outcome."}
+  ]}
+};
+window.SEED.interactions[1].frameworkEvidence = {
+  eq:{version:"1.0",scope:"All BUs",observations:[
+    {dimension:"Ownership & reassurance",status:"Observed",time:"00:13",language:"Arabic",quote:"أكيد، خليني أتحقق من العملية.",note:"The agent offers to check the transaction in Arabic; the actual system check is not evidenced."}
+  ]},
+  problem:{version:"1.0",scope:"All BUs",observations:[
+    {dimension:"Issue identification",status:"Not Assessable",note:"The excerpt shows two customer concerns but does not establish how the agent ultimately addressed both."}
+  ]}
+};
+window.SEED.interactions[4].frameworkEvidence = {
+  eq:{version:"1.0",scope:"All BUs",observations:[
+    {dimension:"Empathy & acknowledgement",status:"Not Assessable",note:"The available excerpt does not provide sufficient evidence of empathy or lack of empathy."}
+  ]},
+  problem:{version:"1.0",scope:"All BUs",observations:[
+    {dimension:"Next-step clarity",status:"Observed",time:"00:17",language:"English",quote:"Let me check what options are available.",note:"The agent indicates a proposed next step; booking changes remain unverified."}
+  ]}
+};
+window.SEED.interactions[6].frameworkEvidence = {
+  eq:{version:"1.0",scope:"All BUs",observations:[
+    {dimension:"Empathy & acknowledgement",status:"Observed",time:"00:18",language:"English",quote:"I'm sorry. I'll review the order and help with a replacement.",note:"The agent apologises and acknowledges the issue; tone is not evaluated."}
+  ]},
+  problem:{version:"1.0",scope:"All BUs",observations:[
+    {dimension:"Next-step clarity",status:"Observed",time:"00:18",language:"English",quote:"I'm sorry. I'll review the order and help with a replacement.",note:"The agent describes an intended action, not a verified replacement."}
+  ]}
 };
