@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handle, MAX_AUDIO_BYTES} from '../worker.mjs';
-const env={OPENAI_API_KEY:'test-not-real',AUDIO_RATE_LIMITER:{limit:async()=>({success:true})},TRANSCRIPTION_MODEL:'gpt-4o-transcribe-diarize',ANALYSIS_MODEL:'gpt-4o-mini'};
+const env={OPENAI_API_KEY:'test-not-real',AUDIO_RATE_LIMITER:{limit:async()=>({success:true})},TRANSCRIPTION_PROVIDER:'openai',ANALYSIS_PROVIDER:'openai',TRANSCRIPTION_MODEL:'gpt-4o-transcribe-diarize',ANALYSIS_MODEL:'gpt-4o-mini'};
 function jsonResponse(body,status=200){return new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});}
 function audioRequest({name='test.wav',size=100,language=''}={}){
   const f=new FormData();f.append('audio',new File([new Uint8Array(size)],name,{type:'audio/wav'}));if(language)f.append('language',language);
