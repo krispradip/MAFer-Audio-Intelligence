@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handle, MAX_AUDIO_BYTES} from '../worker.mjs';
-const env={OPENAI_API_KEY:'test-not-real',DEMO_ACCESS_TOKEN:'not-a-real-secret',TRANSCRIPTION_MODEL:'gpt-4o-transcribe-diarize',ANALYSIS_MODEL:'gpt-4o-mini'};
+const env={OPENAI_API_KEY:'test-not-real',AUDIO_RATE_LIMITER:{limit:async()=>({success:true})},TRANSCRIPTION_MODEL:'gpt-4o-transcribe-diarize',ANALYSIS_MODEL:'gpt-4o-mini'};
 function jsonResponse(body,status=200){return new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});}
-function audioRequest({name='test.wav',size=100,token=env.DEMO_ACCESS_TOKEN,language=''}={}){
+function audioRequest({name='test.wav',size=100,language=''}={}){
   const f=new FormData();f.append('audio',new File([new Uint8Array(size)],name,{type:'audio/wav'}));if(language)f.append('language',language);
-  return new Request('https://example.test/api/transcribe',{method:'POST',headers:{'x-demo-token':token},body:f});
+  return new Request('https://example.test/api/transcribe',{method:'POST',body:f});
 }
-function analysisRequest({roles={A:'Customer',B:'Agent'},segments=[{startMs:0,endMs:1300,speakerId:'A',text:'I need help.'},{startMs:1400,endMs:2500,speakerId:'B',text:'Let me check.'}],token=env.DEMO_ACCESS_TOKEN}={}){
-  return new Request('https://example.test/api/analyze',{method:'POST',headers:{'content-type':'application/json','x-demo-token':token},body:JSON.stringify({segments,speakerMapping:roles,metadata:{bu:'VOX',conversationId:'GEN-ABC'}})});
+function analysisRequest({roles={A:'Customer',B:'Agent'},segments=[{startMs:0,endMs:1300,speakerId:'A',text:'I need help.'},{startMs:1400,endMs:2500,speakerId:'B',text:'Let me check.'}={}){
+  return new Request('https://example.test/api/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({segments,speakerMapping:roles,metadata:{bu:'VOX',conversationId:'GEN-ABC'}})});
 }
 const stt={segments:[{start:0,end:1.3,speaker:'A',text:'I need help.'},{start:1.4,end:2.5,speaker:'B',text:'Let me check.'}],text:'I need help. Let me check.'};
 const intel={summary:'Customer requested support.',reasonForContact:'Support request',issues:[{description:'Needs help',evidenceSegmentIndices:[0,99]}],actions:[{description:'Agent offered to check',evidenceSegmentIndices:[1]}],resolution:{status:'Unclear',description:'Not confirmed',evidenceSegmentIndices:[0]},nextSteps:[],commitments:[],closingSentiment:{value:'Happy',evidenceSegmentIndices:[]},emotionalIndicators:[],conversationSignals:[]};
@@ -17,11 +17,21 @@ const fakeProvider=handler=>{globalThis.fetch=async (url,opts)=>handler(String(u
 test.afterEach(()=>{globalThis.fetch=original;});
 test('health truthfully reports missing secrets without claiming provider verified',async()=>{
   const r=await handle(new Request('https://example.test/api/health'),{}); const d=await r.json();
-  assert.equal(r.status,200);assert.equal(d.engineConfigured,false);assert.equal(d.liveCallsVerified,false);
+  assert.equal(r.status,200);assert.equal(d.engineConfigured,false);assert.equal(d.rateLimitConfigured,false);assert.equal(d.liveCallsVerified,false);
 });
-test('upload must have access token and never calls provider when unauthorized',async()=>{
+test('public demo has no access code, but fails closed without a rate limiter',async()=>{
   let called=0;fakeProvider(()=>{called++;throw new Error('should not reach provider');});
-  const r=await handle(audioRequest({token:'wrong'}),env);assert.equal(r.status,401);assert.equal(called,0);
+  const r=await handle(audioRequest(),{OPENAI_API_KEY:'test'});assert.equal(r.status,503);assert.equal(called,0);
+});
+test('rate limiter blocks excess demo requests before the provider',async()=>{
+  let called=0;fakeProvider(()=>{called++;throw new Error('should not reach provider');});
+  const r=await handle(audioRequest(),{...env,AUDIO_RATE_LIMITER:{limit:async()=>({success:false})}});
+  assert.equal(r.status,429);assert.equal(called,0);
+});
+test('missing OpenAI key blocks real transcription',async()=>{
+  let called=0;fakeProvider(()=>{called++;throw new Error('should not reach provider');});
+  const r=await handle(audioRequest(),{AUDIO_RATE_LIMITER:env.AUDIO_RATE_LIMITER});
+  assert.equal(r.status,503);assert.equal(called,0);
 });
 test('real transcription path forwards binary multipart audio to OpenAI and preserves per-segment timing',async()=>{
   let called=0;
@@ -72,5 +82,5 @@ test('provider quota error is explicit and does not generate fake analysis',asyn
   const r=await handle(analysisRequest(),env);const d=await r.json();assert.equal(r.status,502);assert.equal(d.ok,false);assert.equal(d.error.code,'PROVIDER_429');
 });
 test('unknown API route is rejected',async()=>{
-  const r=await handle(new Request('https://example.test/api/unknown',{method:'POST',headers:{'x-demo-token':env.DEMO_ACCESS_TOKEN}}),env);assert.equal(r.status,404);
+  const r=await handle(new Request('https://example.test/api/unknown',{method:'POST',headers:{}}),env);assert.equal(r.status,404);
 });
