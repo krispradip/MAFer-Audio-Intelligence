@@ -1,3 +1,4 @@
+import {geminiTranscribe,geminiAnalyze} from './gemini-provider.mjs';
 /** MAFer Audio Intelligence live MVP. No synthetic responses or persistent customer data. */
 export const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
 const OPENAI = 'https://api.openai.com/v1';
@@ -68,40 +69,71 @@ function normalizeIntelligence(response, length, speakers){
     emotionalIndicators:em,conversationSignals:sig
   };
 }
+function transcriptionProvider(env){return env.TRANSCRIPTION_PROVIDER||'gemini';}
+function analysisProvider(env){return env.ANALYSIS_PROVIDER||'gemini';}
+function configured(env,kind){
+  const selected=kind==='transcribe'?transcriptionProvider(env):analysisProvider(env);
+  return (selected==='gemini'&&!!env.GEMINI_API_KEY)||(selected==='openai'&&!!env.OPENAI_API_KEY);
+}
 async function transcribe(request,env){
-  if(!env.OPENAI_API_KEY) return fail(503,'NOT_CONFIGURED','OpenAI server secret is not configured.');
+  const adapter=transcriptionProvider(env);
+  if(!['gemini','openai'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported transcription provider configured.');
+  if(!configured(env,'transcribe'))return fail(503,'NOT_CONFIGURED',adapter==='gemini'?'GEMINI_API_KEY is missing from Cloudflare secrets.':'OPENAI_API_KEY is missing from Cloudflare secrets.');
   const declared=Number(request.headers.get('content-length')||0);
-  if(declared>MAX_AUDIO_BYTES+1024*1024) return fail(413,'TOO_LARGE','Recording exceeds the 24 MB upload limit.');
+  if(declared>MAX_AUDIO_BYTES+1024*1024)return fail(413,'TOO_LARGE','Recording exceeds the 24 MB upload limit.');
   const content=request.headers.get('content-type')||'';
-  if(!content.toLowerCase().startsWith('multipart/form-data')) return fail(415,'INVALID_CONTENT_TYPE','Upload multipart/form-data audio.');
-  const incoming=await request.formData();const audio=incoming.get('audio');
-  if(!audio||typeof audio.name!=='string'||!finite(audio.size)||!audio.size) return fail(400,'MISSING_AUDIO','Select an audio recording.');
-  if(audio.size>MAX_AUDIO_BYTES) return fail(413,'TOO_LARGE','Maximum supported file size is 24 MB.');
+  if(!content.toLowerCase().startsWith('multipart/form-data'))return fail(415,'INVALID_CONTENT_TYPE','Upload multipart/form-data audio.');
+  const incoming=await request.formData(),audio=incoming.get('audio');
+  if(!audio||typeof audio.name!=='string'||!finite(audio.size)||!audio.size)return fail(400,'MISSING_AUDIO','Select an audio recording.');
+  if(audio.size>MAX_AUDIO_BYTES)return fail(413,'TOO_LARGE','Maximum supported file size is 24 MB.');
   const ext=audio.name.split('.').pop().toLowerCase();
-  if(!ALLOWED.has(ext)||((audio.type||'')&&!audio.type.startsWith('audio/')&&!['video/mp4','application/octet-stream'].includes(audio.type)))return fail(415,'UNSUPPORTED_AUDIO','Supported audio: MP3, WAV, M4A, AAC, FLAC, OGG, WebM and MP4.');
-  const form=new FormData();form.append('file',audio,audio.name);form.append('model',env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize');form.append('response_format','diarized_json');form.append('chunking_strategy','auto');
+  if(!ALLOWED.has(ext)||((audio.type||'')&&!audio.type.startsWith('audio/')&&!['video/mp4','application/octet-stream'].includes(audio.type)))
+    return fail(415,'UNSUPPORTED_AUDIO','Unsupported audio file. Use MP3, WAV, M4A, AAC, FLAC, OGG or WebM.');
   const requestedLang=text(incoming.get('language'),12);
-  if(['en','ar'].includes(requestedLang))form.append('language',requestedLang);
-  const stt=await provider(OPENAI+'/audio/transcriptions',env.OPENAI_API_KEY,{method:'POST',body:form});
-  const segments=cleanSegments(stt.segments);
-  return json({ok:true,transcriptSchemaVersion:'1.0',segments,language:text(stt.language||'',30)||'Unverified',provider:{transcriptionModel:env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize'},speakerIds:[...new Set(segments.map(s=>s.speakerId))],noSpeech:false});
+  let providerResult;
+  if(adapter==='gemini'){
+    providerResult=await geminiTranscribe(audio,requestedLang,env);
+  }else{
+    const form=new FormData();form.append('file',audio,audio.name);
+    form.append('model',env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize');
+    form.append('response_format','diarized_json');form.append('chunking_strategy','auto');
+    if(['en','ar'].includes(requestedLang))form.append('language',requestedLang);
+    const result=await provider(OPENAI+'/audio/transcriptions',env.OPENAI_API_KEY,{method:'POST',body:form});
+    providerResult={segments:result.segments,language:text(result.language||'',30)||'Unverified',provider:{transcriptionModel:env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize'}};
+  }
+  const segments=cleanSegments(providerResult.segments);
+  return json({ok:true,transcriptSchemaVersion:'1.0',segments,language:providerResult.language||'Auto-detected',
+    provider:providerResult.provider,speakerIds:[...new Set(segments.map(s=>s.speakerId))],noSpeech:false});
 }
 async function analyze(request,env){
-  if(!env.OPENAI_API_KEY)return fail(503,'NOT_CONFIGURED','OpenAI server secret is not configured.');
+  const adapter=analysisProvider(env);
+  if(!['gemini','openai'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported intelligence provider configured.');
+  if(!configured(env,'analyze'))return fail(503,'NOT_CONFIGURED',adapter==='gemini'?'GEMINI_API_KEY is missing from Cloudflare secrets.':'OPENAI_API_KEY is missing from Cloudflare secrets.');
   if(Number(request.headers.get('content-length')||0)>190000)return fail(413,'TOO_LONG','Transcript too long for this MVP.');
   if(!(request.headers.get('content-type')||'').includes('application/json'))return fail(415,'INVALID_CONTENT_TYPE','JSON required.');
-  const payload=await request.json();const verified=validateAnalysisInput(payload);
-  const userData={metadata:verified.metadata,speakerMapping:verified.speakerMapping,segments:verified.segments.map((s,index)=>({index,...s}))};
-  const llm=await provider(OPENAI+'/chat/completions',env.OPENAI_API_KEY,{
-    method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:env.ANALYSIS_MODEL||'gpt-4o-mini',temperature:0,response_format:{type:'json_object'},messages:[{role:'system',content:SYSTEM},{role:'user',content:JSON.stringify(userData)}]})
-  });
-  let raw;try{raw=JSON.parse(llm.choices?.[0]?.message?.content||'')}catch{throw new Error('The analysis model did not return valid JSON.');}
-  const insights=normalizeIntelligence(raw,verified.segments.length,Object.keys(verified.speakerMapping));
-  return json({ok:true,outputSchemaVersion:'1.0',analysisSource:'Transcript evidence only',summaryModel:env.ANALYSIS_MODEL||'gpt-4o-mini',metadata:verified.metadata,speakerMapping:verified.speakerMapping,segments:verified.segments,intelligence:insights,usage:llm.usage||null,generatedAt:new Date().toISOString()});
+  const verified=validateAnalysisInput(await request.json());
+  let insights,model,usage;
+  if(adapter==='gemini'){
+    const result=await geminiAnalyze(verified,env,SYSTEM,normalizeIntelligence);
+    insights=result.intelligence;model=result.summaryModel;usage=result.usage;
+  }else{
+    const userData={metadata:verified.metadata,speakerMapping:verified.speakerMapping,segments:verified.segments.map((s,index)=>({index,...s}))};
+    const llm=await provider(OPENAI+'/chat/completions',env.OPENAI_API_KEY,{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({model:env.ANALYSIS_MODEL||'gpt-4o-mini',temperature:0,response_format:{type:'json_object'},
+        messages:[{role:'system',content:SYSTEM},{role:'user',content:JSON.stringify(userData)}]})
+    });
+    let raw;try{raw=JSON.parse(llm.choices?.[0]?.message?.content||'')}catch{throw new Error('The analysis model did not return valid JSON.');}
+    insights=normalizeIntelligence(raw,verified.segments.length,Object.keys(verified.speakerMapping));
+    model=env.ANALYSIS_MODEL||'gpt-4o-mini';usage=llm.usage||null;
+  }
+  return json({ok:true,outputSchemaVersion:'1.0',analysisSource:'Transcript evidence only',summaryModel:model,
+    metadata:verified.metadata,speakerMapping:verified.speakerMapping,segments:verified.segments,
+    intelligence:insights,usage:usage||null,generatedAt:new Date().toISOString()});
 }
 export async function handle(request,env={}){
   const url=new URL(request.url),path=url.pathname;
-  if(path==='/api/health' && request.method==='GET')return json({ok:true,engineConfigured:!!env.OPENAI_API_KEY,rateLimitConfigured:!!env.AUDIO_RATE_LIMITER,transcriptionModel:env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize',analysisModel:env.ANALYSIS_MODEL||'gpt-4o-mini',liveCallsVerified:false});
+  if(path==='/api/health' && request.method==='GET')return json({ok:true,engineConfigured:configured(env,'transcribe')&&configured(env,'analyze'),rateLimitConfigured:!!env.AUDIO_RATE_LIMITER,transcriptionProvider:transcriptionProvider(env),analysisProvider:analysisProvider(env),transcriptionModel:env.TRANSCRIPTION_MODEL||(transcriptionProvider(env)==='gemini'?'gemini-3.5-transcribe':'gpt-4o-transcribe-diarize'),analysisModel:env.ANALYSIS_MODEL||(analysisProvider(env)==='gemini'?'gemini-3.8-flash':'gpt-4o-mini'),liveCallsVerified:false});
   if(path.startsWith('/api/')){
     if(!['POST'].includes(request.method))return fail(405,'METHOD_NOT_ALLOWED','This API requires POST.');
     // Prototype has no UI password. Require an active Cloudflare rate-limit binding
@@ -119,7 +151,9 @@ export async function handle(request,env={}){
       if(path==='/api/analyze')return await analyze(request,env);
       return fail(404,'NOT_FOUND','Unknown API endpoint.');
     }catch(err){
-      const status=err.code?.startsWith('PROVIDER_')?502:(/Invalid|missing|Confirm|No valid|Transcript|speaker|segment|object required|exceeds|long|return/.test(err.message)?422:502);
+      const status=err.code==='NOT_CONFIGURED'?503:err.code==='UNSUPPORTED_AUDIO'?415:err.code==='GEMINI_429'?429:
+        err.code?.startsWith('PROVIDER_')||err.code?.startsWith('GEMINI_')?502:
+        (/Invalid|missing|Confirm|No valid|Transcript|speaker|segment|object required|exceeds|long|return/.test(err.message)?422:502);
       return fail(status,text(err.code,60)||'PROCESSING_FAILED',text(err.message,270)||'Processing failed.');
     }
   }
