@@ -1,4 +1,5 @@
 // Actual audio and model responses only. No seeded interactions or fake success statuses.
+import {conversationIdFromFilename,metadataFromJson} from './metadata.js';
 const $ = id => document.getElementById(id);
 const safe = x => String(x??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clock=ms=>{const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);return (h?String(h).padStart(2,'0')+':':'')+String(m%60).padStart(2,'0')+':'+String(s%60).padStart(2,'0')+'.'+String(ms%1000).padStart(3,'0');};
@@ -22,13 +23,66 @@ document.querySelectorAll('[data-nav-target]').forEach(button=>button.addEventLi
   document.querySelectorAll('[data-nav-target]').forEach(x=>x.classList.toggle('active',x===button));
   target.scrollIntoView({behavior:'smooth',block:'start'});
 }));
-function meta(){return {conversationId:$('conversationId').value.trim(),agentName:$('agentName').value.trim(),bu:$('bu').value,brand:$('brand').value.trim()||$('bu').value,market:$('market').value,language:$('language').value==='auto'?'Auto-detected':$('language').value==='ar'?'Arabic':'English'};}
+const metadataIds=['conversationId','agentName','bu','brand','market','language'];
+function setOrigin(id,description,imported=false){
+  const node=$(id+'Source');
+  if(node){node.textContent=description;node.classList.toggle('verified',imported);}
+}
+function clearMetadata(){
+  $('conversationId').value='';$('agentName').value='';$('brand').value='';
+  $('bu').value='VOX';$('market').value='UAE';$('language').value='auto';
+  $('metadataFile').value='';$('metadataState').textContent='No Genesys metadata imported';
+  setOrigin('conversationId','Not identified');
+  setOrigin('agentName','Not identified');
+  setOrigin('brand','Not identified');
+  setOrigin('bu','Preset: VOX · confirm');
+  setOrigin('market','Preset: UAE · confirm');
+  setOrigin('language','Auto-detect on transcription');
+}
+function meta(){return {conversationId:$('conversationId').value.trim(),agentName:$('agentName').value.trim(),bu:$('bu').value,brand:$('brand').value.trim(),market:$('market').value,language:$('language').value==='auto'?'Auto-detect / bilingual':$('language').value==='ar'?'Arabic':'English'};}
+function metadataChanged(){
+  if(!analysis)return;
+  analysis=null;$('resultsPanel').hidden=true;syncNavigation();
+  status('llm','','Metadata changed; run analysis again');
+  status('qa','','Re-analyze before QA export');
+}
+metadataIds.forEach(id=>$(id).addEventListener('change',()=>{
+  const value=$(id).value.trim();
+  setOrigin(id,id==='language'&&value==='auto'?'Auto-detect on transcription':'Edited manually');
+  metadataChanged();
+}));
+$('importMetadataBtn').addEventListener('click',()=>$('metadataFile').click());
+$('metadataFile').addEventListener('change',async event=>{
+  const imported=event.target.files?.[0];
+  if(!imported)return;
+  if(imported.size>256*1024 || !/\\.json$/i.test(imported.name))return notice('Select a Genesys metadata JSON smaller than 256 KB.','error');
+  let values;
+  try{values=metadataFromJson(JSON.parse(await imported.text()));}
+  catch(error){return notice('Metadata import failed: '+error.message,'error');}
+  const filenameId=file?conversationIdFromFilename(file.name):'';
+  if(filenameId&&values.conversationId&&filenameId.toLowerCase()!==values.conversationId.toLowerCase())
+    return notice('Metadata JSON conversation ID does not match the UUID in this recording filename. Nothing was changed.','error');
+  let count=0;
+  for(const id of metadataIds){
+    if(values[id]){
+      $(id).value=values[id];
+      setOrigin(id,'From imported JSON · verify',true);
+      count++;
+    }
+  }
+  if(!count)return notice('The JSON contains no recognized conversation or contact-centre metadata fields.','error');
+  $('metadataState').textContent=count+' field'+(count===1?'':'s')+' populated from '+imported.name;
+  metadataChanged();
+  notice(count+' metadata field'+(count===1?'':'s')+' populated. Confirm the imported values before analysis.');
+});
 function reset(full=true){
   if(localUrl) URL.revokeObjectURL(localUrl);localUrl=null;file=null;transcription=null;analysis=null;roles={};durationMs=null;
   $('audioFile').value='';$('player').hidden=true;$('player').removeAttribute('src');$('player').load();
   $('dropTitle').textContent='Choose an audio recording';$('dropDesc').textContent='MP3, WAV, M4A, MP4, FLAC, OGG or WebM · maximum 24 MB';
   $('transcribeBtn').disabled=true;$('transcriptionPanel').hidden=true;$('resultsPanel').hidden=true;$('analyzeBtn').disabled=true;$('speakerMap').replaceChildren();
-  if(full){['conversationId','agentName','brand'].forEach(k=>$(k).value='');$('bu').value='VOX';$('market').value='UAE';$('language').value='auto';}
+  // Every new recording must clear IDs, agent identities and brand from the prior file.
+  // Keeping stale metadata would cause incorrect QA handoff, even in a demo.
+  clearMetadata();
   ['stt','roles','llm','qa'].forEach((k)=>status(k,'',k==='stt'||k==='llm'?'Not started':k==='roles'?'Waiting for audio':'No export available'));
   steps(1);clearNotice();syncNavigation();
 }
@@ -38,9 +92,14 @@ function pick(next){
   if(!next||!['mp3','wav','m4a','aac','flac','ogg','webm','mp4','mpeg','mpga'].includes(ext))return notice('Select a supported audio file.','error');
   if(next.size<1||next.size>MAX)return notice('Recording must be nonempty and no larger than 24 MB.','error');
   reset(false);file=next;localUrl=URL.createObjectURL(next);$('player').src=localUrl;$('player').hidden=false;
+  const detectedId=conversationIdFromFilename(next.name);
+  if(detectedId){
+    $('conversationId').value=detectedId;
+    setOrigin('conversationId','UUID found in filename · verify',true);
+  }
   $('dropTitle').textContent=next.name;$('dropDesc').textContent=(next.size/1024/1024).toFixed(2)+' MB · Ready for real transcription';
   $('transcribeBtn').disabled=false;
-  notice('Recording selected. No data has been sent yet.');
+  notice(detectedId?'Recording selected. Conversation ID populated from filename; verify it matches Genesys. No data has been sent yet.':'Recording selected. No Conversation ID was found in filename; import Genesys metadata JSON to fill available fields.');
 }
 $('browseBtn').addEventListener('click',e=>{e.stopPropagation();$('audioFile').click();});
 $('dropzone').addEventListener('click',e=>{if(e.target.closest('button'))return;$('audioFile').click();});
