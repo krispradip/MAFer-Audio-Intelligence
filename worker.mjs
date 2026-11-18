@@ -9,11 +9,6 @@ const text = (value, max=200) => typeof value==='string' ? value.trim().slice(0,
 const finite = x => typeof x==='number' && Number.isFinite(x);
 const isObject = x => x && typeof x==='object' && !Array.isArray(x);
 const allowedRoles = new Set(['Agent','Customer','Other']);
-function sameToken(provided, expected) {
-  if(typeof provided!=='string' || typeof expected!=='string' || !expected || provided.length!==expected.length) return false;
-  let mismatch=0;for(let i=0;i<expected.length;i++) mismatch |= provided.charCodeAt(i)^expected.charCodeAt(i);
-  return mismatch===0;
-}
 function cleanSegments(input) {
   if(!Array.isArray(input) || input.length===0 || input.length>2000) throw new Error('No valid timestamped speaker segments returned.');
   let prior=-1;
@@ -106,10 +101,19 @@ async function analyze(request,env){
 }
 export async function handle(request,env={}){
   const url=new URL(request.url),path=url.pathname;
-  if(path==='/api/health' && request.method==='GET')return json({ok:true,engineConfigured:!!env.OPENAI_API_KEY,accessConfigured:!!env.DEMO_ACCESS_TOKEN,transcriptionModel:env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize',analysisModel:env.ANALYSIS_MODEL||'gpt-4o-mini',liveCallsVerified:false});
+  if(path==='/api/health' && request.method==='GET')return json({ok:true,engineConfigured:!!env.OPENAI_API_KEY,rateLimitConfigured:!!env.AUDIO_RATE_LIMITER,transcriptionModel:env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize',analysisModel:env.ANALYSIS_MODEL||'gpt-4o-mini',liveCallsVerified:false});
   if(path.startsWith('/api/')){
     if(!['POST'].includes(request.method))return fail(405,'METHOD_NOT_ALLOWED','This API requires POST.');
-    if(!env.DEMO_ACCESS_TOKEN||!sameToken(request.headers.get('x-demo-token'),env.DEMO_ACCESS_TOKEN))return fail(401,'UNAUTHORIZED','Enter the configured demo access code.');
+    // Prototype has no UI password. Require an active Cloudflare rate-limit binding
+    // before making any billable provider calls; additionally protect the site with
+    // Cloudflare Access / an allowlist when real customer recordings are involved.
+    if(!env.AUDIO_RATE_LIMITER || typeof env.AUDIO_RATE_LIMITER.limit!=='function')
+      return fail(503,'PROCESSING_GUARD_UNAVAILABLE','Audio processing guard is not configured. Deploy with the Cloudflare rate-limit binding.');
+    try{
+      const visitor=request.headers.get('CF-Connecting-IP')||'unknown';
+      const outcome=await env.AUDIO_RATE_LIMITER.limit({key:visitor});
+      if(!outcome?.success)return fail(429,'TOO_MANY_REQUESTS','Demo processing limit reached. Try again after a minute.');
+    }catch{return fail(503,'PROCESSING_GUARD_UNAVAILABLE','Audio processing guard could not be verified.');}
     try{
       if(path==='/api/transcribe')return await transcribe(request,env);
       if(path==='/api/analyze')return await analyze(request,env);
