@@ -35,6 +35,14 @@ This is a **standalone audio transcription and interaction-intelligence applicat
 
 If the secret was added **before** deploying the new Worker, preserve it on the same Worker/environment. The browser does not require an access code, but the public URL needs a Cloudflare Access/WAF restriction and provider usage budgets to prevent unauthorized consumption. A per-IP rate limiter alone does not protect customer data or cap total spend.
 
+## Automatic metadata for manual uploads
+
+- On choosing an audio file, the browser reads a UUID-shaped Genesys Conversation ID from the filename (for example `Call1-6bbb0b8f-6d2d-4115-ae5a-0481f21e71f5.MP3`). Verify that the UUID is the actual Genesys Conversation ID; it is not checked against Genesys.
+- **Import metadata JSON** is an optional browser-side importer for a normalized metadata object or a Genesys conversation export containing explicitly named `conversationId`, `agentName` / agent participant `userName`, `businessUnit`, `brand`, `market` / `country`, and `language`. The importer does not authenticate with Genesys or retrieve data automatically from an ID; its JSON format depends on the source. Only recognized fields are selected.
+- If a JSON conversation ID and the recording filename UUID disagree, the import is rejected; the UI shows the origin of each value. A fresh upload clears any previous agent, brand, or conversation ID.
+- **VOX** and **UAE** are existing editable *presets*, not inferred facts. A brand is never fabricated from the BU field, and agent identity is not guessed from speech. Language stays on automatic bilingual recognition unless explicitly supplied by metadata or the user.
+- To fully populate all fields from Genesys without a separate metadata file, a corporate Genesys OAuth/service integration and a conversation-ID lookup are still required. Do not put Genesys access tokens into public browser code.
+
 ## Verify before the demonstration
 
 1. Open `https://mafer-audio-intelligence.kris-pradip.workers.dev/api/health`.
