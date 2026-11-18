@@ -8,6 +8,20 @@ const status=(key,value,detail)=>{const dot=$(key+'Dot');if(dot)dot.className='s
 function notice(message,kind='success'){$('message').hidden=false;$('message').className='message '+(kind==='success'?'':kind);$('message').textContent=message;}
 function clearNotice(){$('message').hidden=true;$('message').textContent='';}
 function steps(active){document.querySelectorAll('[data-step]').forEach(el=>{const idx=Number(el.dataset.step);el.classList.toggle('active',idx===active);el.classList.toggle('done',idx<active);});}
+function syncNavigation(){
+  const transcriptReady=!!transcription&&Array.isArray(transcription.segments)&&transcription.segments.length>0;
+  const handoffReady=transcriptReady&&!!analysis&&roleReady();
+  $('navTranscript').disabled=!transcriptReady;
+  $('navQA').disabled=!handoffReady;
+  const current=document.querySelector('.side-link.active');
+  if(current?.disabled){current.classList.remove('active');$('navUpload').classList.add('active');}
+}
+document.querySelectorAll('[data-nav-target]').forEach(button=>button.addEventListener('click',()=>{
+  if(button.disabled)return;
+  const target=$(button.dataset.navTarget);if(!target||target.hidden)return;
+  document.querySelectorAll('[data-nav-target]').forEach(x=>x.classList.toggle('active',x===button));
+  target.scrollIntoView({behavior:'smooth',block:'start'});
+}));
 function meta(){return {conversationId:$('conversationId').value.trim(),agentName:$('agentName').value.trim(),bu:$('bu').value,brand:$('brand').value.trim()||$('bu').value,market:$('market').value,language:$('language').value==='auto'?'Auto-detected':$('language').value==='ar'?'Arabic':'English'};}
 function reset(full=true){
   if(localUrl) URL.revokeObjectURL(localUrl);localUrl=null;file=null;transcription=null;analysis=null;roles={};durationMs=null;
@@ -16,7 +30,7 @@ function reset(full=true){
   $('transcribeBtn').disabled=true;$('transcriptionPanel').hidden=true;$('resultsPanel').hidden=true;$('analyzeBtn').disabled=true;$('speakerMap').replaceChildren();
   if(full){['conversationId','agentName','brand'].forEach(k=>$(k).value='');$('bu').value='VOX';$('market').value='UAE';$('language').value='auto';}
   ['stt','roles','llm','qa'].forEach((k)=>status(k,'',k==='stt'||k==='llm'?'Not started':k==='roles'?'Waiting for audio':'No export available'));
-  steps(1);clearNotice();
+  steps(1);clearNotice();syncNavigation();
 }
 function pick(next){
   if(busy)return;
@@ -59,7 +73,7 @@ $('refreshHealth').addEventListener('click',health);
 $('transcribeBtn').addEventListener('click',async()=>{
   if(!file||busy)return;
   const body=new FormData();body.append('audio',file,file.name);const lang=$('language').value;if(lang!=='auto')body.append('language',lang);
-  busy=true;$('transcribeBtn').disabled=true;$('resultsPanel').hidden=true;transcription=null;analysis=null;roles={};
+  busy=true;$('transcribeBtn').disabled=true;$('transcriptionPanel').hidden=true;$('resultsPanel').hidden=true;transcription=null;analysis=null;roles={};syncNavigation();status('qa','','No export available');
   status('stt','busy','Uploading and processing audio…');status('roles','','Waiting for speaker output');status('llm','','Waiting for transcription');steps(2);notice('Sending recording to the speech-to-text model. This is a real processing request.','busy');
   try{
     const res=await api('transcribe',{body});
@@ -71,7 +85,7 @@ $('transcribeBtn').addEventListener('click',async()=>{
       last=segment.startMs;
     }
     transcription=res;roles=Object.fromEntries(res.speakerIds.map(s=>[s,'']));
-    $('transcriptionPanel').hidden=false;renderSpeakers();renderTranscript();
+    $('transcriptionPanel').hidden=false;renderSpeakers();renderTranscript();syncNavigation();
     $('segmentCount').textContent=res.segments.length+' segments';
     status('stt','done',res.segments.length+' timestamped segments produced');status('roles','busy','Assign speaker roles to continue');
     notice('Actual audio transcription completed. Confirm agent and customer speakers before analysis.');
@@ -88,7 +102,7 @@ function renderSpeakers(){
 $('speakerMap').addEventListener('change',e=>{
   if(!e.target.matches('[data-speaker]')||busy)return;
   roles[e.target.dataset.speaker]=e.target.value;
-  analysis=null;$('resultsPanel').hidden=true;status('qa','','No export available');status('llm','','Awaiting analysis');
+  analysis=null;$('resultsPanel').hidden=true;syncNavigation();status('qa','','No export available');status('llm','','Awaiting analysis');
   status('roles',roleReady()?'done':'busy',roleReady()?'All speaker roles confirmed':'Assign agent and customer');
   renderSpeakers();renderTranscript();clearNotice();
 });
@@ -102,7 +116,7 @@ $('analyzeBtn').addEventListener('click',async()=>{
   try{
     analysis=await api('analyze',{headers:{'content-type':'application/json'},body:JSON.stringify({segments:transcription.segments,speakerMapping:roles,metadata:meta()})});
     if(!analysis.intelligence)throw new Error('The model response has no intelligence section.');
-    renderResults();$('resultsPanel').hidden=false;status('llm','done','Live LLM response received');status('qa','done','QA-ready JSON available for download');
+    renderResults();$('resultsPanel').hidden=false;syncNavigation();status('llm','done','Live LLM response received');status('qa','done','QA-ready JSON available for download');
     completeCount++;$('completedCount').textContent=String(completeCount);notice('Analysis completed using the real LLM. Download the QA handoff JSON.');
     $('resultsPanel').scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){steps(2);status('llm','bad','Analysis failed');notice('AI analysis failed: '+e.message,'error');}
