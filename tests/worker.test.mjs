@@ -7,7 +7,7 @@ function audioRequest({name='test.wav',size=100,language=''}={}){
   const f=new FormData();f.append('audio',new File([new Uint8Array(size)],name,{type:'audio/wav'}));if(language)f.append('language',language);
   return new Request('https://example.test/api/transcribe',{method:'POST',body:f});
 }
-function analysisRequest({roles={A:'Customer',B:'Agent'},segments=[{startMs:0,endMs:1300,speakerId:'A',text:'I need help.'},{startMs:1400,endMs:2500,speakerId:'B',text:'Let me check.'}={}){
+function analysisRequest({roles={A:'Customer',B:'Agent'},segments=[{startMs:0,endMs:1300,speakerId:'A',text:'I need help.'},{startMs:1400,endMs:2500,speakerId:'B',text:'Let me check.'}]}={}){
   return new Request('https://example.test/api/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({segments,speakerMapping:roles,metadata:{bu:'VOX',conversationId:'GEN-ABC'}})});
 }
 const stt={segments:[{start:0,end:1.3,speaker:'A',text:'I need help.'},{start:1.4,end:2.5,speaker:'B',text:'Let me check.'}],text:'I need help. Let me check.'};
