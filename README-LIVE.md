@@ -4,7 +4,7 @@ This is **working integration code** (real OpenAI API calls), not the legacy int
 
 ## Live workflow
 
-1. Open the Worker site and enter your privately configured `DEMO_ACCESS_TOKEN` access code.
+1. Open the Worker site. No access code is required in the application. The Worker must have `OPENAI_API_KEY` configured and a working Cloudflare rate-limit binding.
 2. Choose a real, non-sensitive English/Arabic recording up to **24 MiB**. Optional metadata: Genesys Conversation ID, agent name, BU, brand and market.
 3. **Transcribe audio** invokes `POST /api/transcribe` → OpenAI `gpt-4o-transcribe-diarize` with `diarized_json`, `chunking_strategy=auto`. This returns real **speaker IDs and per-turn start/end timestamps**. Invalid/missing timestamps fail closed.
 4. Confirm which speaker is **Agent** and **Customer** in the UI. These roles are not invented by the LLM.
@@ -21,20 +21,26 @@ No test recordings, synthetic interaction cards, fabricated model responses or p
 npm install
 npx wrangler login
 npx wrangler secret put OPENAI_API_KEY
-npx wrangler secret put DEMO_ACCESS_TOKEN
 npx wrangler deploy
 ```
 
 Run `wrangler secret put` using the same account and `name` as in `wrangler.jsonc`. The Worker name is `mafer-audio-intelligence` and assets are built from `public/`. If the existing Cloudflare site is deployed by a different method, change/reconcile its deployment config carefully; a GitHub commit alone does **not** redeploy the site.
 
-**For local development** copy `.dev.vars.example` to `.dev.vars`, enter a non-production API key and long test access code (do **not** commit `.dev.vars`), then:
+**For local development** copy `.dev.vars.example` to `.dev.vars`, enter a non-production OpenAI API key (do **not** commit `.dev.vars`), then:
 
 ```sh
 npm install
 npm run dev
 ```
 
-The access-code input is for this limited test environment, **not** production enterprise authentication. Prefer Cloudflare Access or corporate SSO, server-enforced BU authorization, audit and retention controls before ingesting any customer information. Do not upload real customer recordings to a public/test Workers URL or unapproved third-party OpenAI account.
+No access-code entry or `DEMO_ACCESS_TOKEN` is used. The Worker requires an `AUDIO_RATE_LIMITER` binding and rejects requests when it is missing. The included Wrangler configuration limits each IP to six `/api/*` requests per minute per Cloudflare location. **A per-IP rate limit is not authentication or a hard cost cap.** Configure Cloudflare Access or another private allowlist and OpenAI budget limits before making the model-backed site broadly available; use synthetic or expressly authorized non-sensitive recordings for this prototype. Do not upload real customer recordings to an unapproved public Workers URL or personal OpenAI account.
+
+
+### Minimum one-time Cloudflare setup
+
+The **only API secret required** is `OPENAI_API_KEY`. Configure it in **Cloudflare Dashboard → Workers & Pages → mafer-audio-intelligence → Settings → Variables and Secrets → Add → Secret**. Paste the approved OpenAI API key there (never into the webpage or GitHub). Configure Cloudflare Access or a restrictive WAF rule on the public Worker before making the demo broadly reachable.
+
+Redeploy the **current GitHub main** using `npx wrangler deploy` so that the `AUDIO_RATE_LIMITER` binding is installed. GitHub commits alone do not deploy the Worker. Visit `/api/health` and confirm `engineConfigured: true` and `rateLimitConfigured: true`; these flags mean **configured**, not that a real model call has succeeded. Process a short, non-sensitive authorized recording and check transcript timestamps, speaker mapping, and output JSON to prove the end-to-end integration.
 
 ## Test
 
@@ -49,8 +55,8 @@ Tests mock upstream HTTP responses **only to verify integration logic, gating, f
 ## API / Handoff
 
 - `GET /api/health` — indicates which services are configured; does not imply a successful API call.
-- `POST /api/transcribe` — form-data `audio`, optional `language` (`en`, `ar`), header `x-demo-token`.
-- `POST /api/analyze` — JSON `{segments, speakerMapping, metadata}`, header `x-demo-token`.
+- `POST /api/transcribe` — form-data `audio`, optional `language` (`en`, `ar`); no demo access-code header. Requires the `AUDIO_RATE_LIMITER` binding.
+- `POST /api/analyze` — JSON `{segments, speakerMapping, metadata}`; no demo access-code header. Requires the `AUDIO_RATE_LIMITER` binding.
 - Output: `MAFerAudio_<conversation_id>_QA_handoff.json` with `handoffSchemaVersion=1.0`, `qaScoringPerformed=false`, confirmed role mapping, audio-derived `startMs/endMs`, original text, structured interaction intelligence and evidence indices.
 
 ### Constraints / Migration
