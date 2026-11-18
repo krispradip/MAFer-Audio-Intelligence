@@ -63,9 +63,9 @@ async function api(endpoint, options={}){
 async function health(){
   try{const r=await fetch('/api/health',{cache:'no-store'});const d=await r.json();
     if(!r.ok||!d.ok)throw new Error('Not ready');
-    $('engineStatus').textContent=!d.engineConfigured?'OpenAI key not configured':!d.rateLimitConfigured?'Processing guard not configured':'Processing API configured';
+    $('engineStatus').textContent=!d.engineConfigured?'AI provider key not configured':!d.rateLimitConfigured?'Processing guard not configured':'Processing API configured';
     $('sttModel').textContent=d.transcriptionModel||'Unknown';$('llmModel').textContent=d.analysisModel||'Unknown';
-    $('protectionStatus').textContent=d.engineConfigured&&d.rateLimitConfigured?'Ready for live testing (not yet verified)':!d.engineConfigured?'Missing OPENAI_API_KEY secret':'Rate limiter must be deployed';
+    $('protectionStatus').textContent=d.engineConfigured&&d.rateLimitConfigured?'Ready for live testing (not yet verified)':!d.engineConfigured?'Missing GEMINI_API_KEY secret':'Rate limiter must be deployed';
     $('engineStatus').style.color=d.engineConfigured&&d.rateLimitConfigured?'#16886e':'#ba5964';
   }catch{ $('engineStatus').textContent='Backend unavailable';$('engineStatus').style.color='#ba5964';$('sttModel').textContent='Unavailable';$('llmModel').textContent='Unavailable';$('protectionStatus').textContent='Backend unavailable';}
 }
