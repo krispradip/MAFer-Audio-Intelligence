@@ -31,7 +31,7 @@ function setOrigin(id,description,imported=false){
 function clearMetadata(){
   $('conversationId').value='';$('agentName').value='';$('brand').value='';
   $('bu').value='VOX';$('market').value='UAE';$('language').value='auto';
-  $('metadataFile').value='';$('metadataState').textContent='No Genesys metadata imported';
+  $('metadataFile').value='';$('metadataState').textContent='No Genesys metadata imported';$('importMetadataBtn').disabled=true;
   setOrigin('conversationId','Not identified');
   setOrigin('agentName','Not identified');
   setOrigin('brand','Not identified');
@@ -98,7 +98,7 @@ function pick(next){
     setOrigin('conversationId','UUID found in filename · verify',true);
   }
   $('dropTitle').textContent=next.name;$('dropDesc').textContent=(next.size/1024/1024).toFixed(2)+' MB · Ready for real transcription';
-  $('transcribeBtn').disabled=false;
+  $('transcribeBtn').disabled=false;$('importMetadataBtn').disabled=false;
   notice(detectedId?'Recording selected. Conversation ID populated from filename; verify it matches Genesys. No data has been sent yet.':'Recording selected. No Conversation ID was found in filename; import Genesys metadata JSON to fill available fields.');
 }
 $('browseBtn').addEventListener('click',e=>{e.stopPropagation();$('audioFile').click();});
