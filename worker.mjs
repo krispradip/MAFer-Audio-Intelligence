@@ -5,20 +5,21 @@ const OPENAI = 'https://api.openai.com/v1';
 const ALLOWED = new Set(['mp3','wav','m4a','aac','flac','ogg','webm','mp4','mpeg','mpga']);
 const HEADER = { 'content-type':'application/json; charset=utf-8', 'cache-control':'no-store', 'x-content-type-options':'nosniff', 'referrer-policy':'no-referrer' };
 const json = (body, status=200) => new Response(JSON.stringify(body), {status, headers:HEADER});
-const fail = (status, code, detail) => json({ok:false, error:{code, message:detail}},status);
+const fail = (status, code, detail, stage) => json({ok:false, error:{code, message:detail, ...(stage?{stage}:{})}},status);
 const text = (value, max=200) => typeof value==='string' ? value.trim().slice(0,max) : '';
 const finite = x => typeof x==='number' && Number.isFinite(x);
 const isObject = x => x && typeof x==='object' && !Array.isArray(x);
 const allowedRoles = new Set(['Agent','Customer','Other']);
 function cleanSegments(input) {
-  if(!Array.isArray(input) || input.length===0 || input.length>2000) throw new Error('No valid timestamped speaker segments returned.');
+  if(!Array.isArray(input) || input.length===0){const e=new Error('No valid timestamped speaker segments returned.');e.code='TRANSCRIPT_EMPTY';e.stage='timestamp-validation';throw e;}
+  if(input.length>2000){const e=new Error('Transcript exceeds 2000 speaker segments for this prototype.');e.code='TRANSCRIPT_SEGMENT_LIMIT';e.stage='timestamp-validation';throw e;}
   let prior=-1;
   return input.map((s,i)=>{
     const startMs=s.startMs!==undefined?s.startMs:finite(s.start)?Math.round(s.start*1000):NaN;
     const endMs=s.endMs!==undefined?s.endMs:finite(s.end)?Math.round(s.end*1000):NaN;
     const speakerId=text(s.speakerId||s.speaker,80), words=text(s.text,4000);
     if(!Number.isInteger(startMs)||!Number.isInteger(endMs)||startMs<0||endMs<=startMs||startMs<prior||!speakerId||!words)
-      throw new Error('Invalid timestamps/speaker/text in segment '+(i+1));
+      {const e=new Error('Invalid timestamps, speaker label, or text in segment '+(i+1)+'.');e.code='TRANSCRIPT_SEGMENT_INVALID';e.stage='timestamp-validation';throw e;}
     prior=startMs;
     return {startMs,endMs,speakerId,text:words};
   });
@@ -92,7 +93,8 @@ async function transcribe(request,env){
   const requestedLang=text(incoming.get('language'),12);
   let providerResult;
   if(adapter==='gemini'){
-    providerResult=await geminiTranscribe(audio,requestedLang,env);
+    try{providerResult=await geminiTranscribe(audio,requestedLang,env);}
+    catch(e){e.stage=e.stage||'gemini-transcription';throw e;}
   }else{
     const form=new FormData();form.append('file',audio,audio.name);
     form.append('model',env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize');
@@ -101,7 +103,7 @@ async function transcribe(request,env){
     const result=await provider(OPENAI+'/audio/transcriptions',env.OPENAI_API_KEY,{method:'POST',body:form});
     providerResult={segments:result.segments,language:text(result.language||'',30)||'Unverified',provider:{transcriptionModel:env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize'}};
   }
-  const segments=cleanSegments(providerResult.segments);
+  let segments;try{segments=cleanSegments(providerResult.segments);}catch(e){e.stage=e.stage||'timestamp-validation';throw e;}
   return json({ok:true,transcriptSchemaVersion:'1.0',segments,language:providerResult.language||'Auto-detected',
     provider:providerResult.provider,speakerIds:[...new Set(segments.map(s=>s.speakerId))],noSpeech:false});
 }
@@ -152,9 +154,10 @@ export async function handle(request,env={}){
       return fail(404,'NOT_FOUND','Unknown API endpoint.');
     }catch(err){
       const status=err.code==='NOT_CONFIGURED'?503:err.code==='UNSUPPORTED_AUDIO'?415:err.code==='GEMINI_429'?429:
+        err.code?.startsWith('TRANSCRIPT_')?422:
         err.code?.startsWith('PROVIDER_')||err.code?.startsWith('GEMINI_')?502:
         (/Invalid|missing|Confirm|No valid|Transcript|speaker|segment|object required|exceeds|long|return/.test(err.message)?422:502);
-      return fail(status,text(err.code,60)||'PROCESSING_FAILED',text(err.message,270)||'Processing failed.');
+      return fail(status,text(err.code,60)||'PROCESSING_FAILED',text(err.message,270)||'Processing failed.',text(err.stage||'request-validation',60));
     }
   }
   return env.ASSETS?env.ASSETS.fetch(request):fail(404,'NOT_FOUND','Static assets are not bound.');
