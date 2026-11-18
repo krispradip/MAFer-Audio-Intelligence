@@ -90,8 +90,40 @@ function providerUrl(model){
   if(typeof model!=='string'||!/^[A-Za-z0-9.-]{2,80}$/.test(model))throw failure('Invalid configured Gemini model name.');
   return `${HOST}/v1beta/models/${model}:generateContent`;
 }
+// Limited retries for Gemini model capacity failures only; do not repeat audio
+// uploads, billing/auth failures, malformed requests, or timestamp validation.
+function retryDelayMs(retryAfter,attempt){
+  let serverWait=0;
+  if(retryAfter){
+    const seconds=Number(retryAfter);
+    if(Number.isFinite(seconds)&&seconds>=0)serverWait=seconds*1000;
+    else{const until=Date.parse(retryAfter);if(Number.isFinite(until))serverWait=Math.max(0,until-Date.now());}
+  }
+  // Max two retries: approximate delays 1s and 2s. Cap any Retry-After hint
+  // at 8s so an interactive request does not hang indefinitely.
+  return Math.min(8000,Math.max(1000*2**attempt+Math.floor(Math.random()*250),serverWait));
+}
 async function postJson(url,key,data){
-  return responseJson(await fetch(url, {method:'POST',headers:{'x-goog-api-key':key,'content-type':'application/json'},body:JSON.stringify(data),redirect:'manual',signal:AbortSignal.timeout(150000)}));
+  const body=JSON.stringify(data);
+  for(let attempt=0;attempt<3;attempt++){
+    const response=await fetch(url,{
+      method:'POST',headers:{'x-goog-api-key':key,'content-type':'application/json'},
+      body,redirect:'manual',signal:AbortSignal.timeout(150000)
+    });
+    if(response.status===503&&attempt<2){
+      // Discard the error body before issuing a new model request.
+      const delay=retryDelayMs(response.headers.get('retry-after'),attempt);
+      try{await response.body?.cancel();}catch{}
+      await new Promise(resolve=>setTimeout(resolve,delay));
+      continue;
+    }
+    try{return await responseJson(response);}
+    catch(error){
+      if(error.code==='GEMINI_503'&&attempt===2)
+        error.message='Gemini model is temporarily overloaded. Three model attempts failed. Please retry later.';
+      throw error;
+    }
+  }
 }
 export async function uploadGeminiAudio(audio, key){
   const mime=audioMime(audio);
