@@ -24,6 +24,7 @@ test('Gemini transcription submits file, turns on diarization and timestamps, an
   try{
     const file=new File([new Uint8Array(50)],'sample.mp3',{type:'audio/mpeg'});
     const out=await geminiTranscribe(file,'ar',env);assert.equal(out.segments.length,2);assert.deepEqual(out.speakerIds,['spk_1','spk_2']);
+    assert.ok(calls.every(call=>call.opts.redirect==='manual'),'All Gemini requests must use Cloudflare-supported manual redirects');
     assert.equal(calls[0].opts.headers['x-goog-api-key'],env.GEMINI_API_KEY);
     assert.equal(calls[1].opts.body.size,50);
     const data=JSON.parse(calls[2].opts.body);
@@ -46,4 +47,19 @@ test('Gemini analysis uses configured JSON model and leaves QA normalization to 
 });
 test('missing Gemini key fails without calling provider',async()=>{
   await assert.rejects(()=>geminiTranscribe(new File([new Uint8Array(5)],'x.mp3'),'',{}),/GEMINI_API_KEY/);
+});
+test('Gemini explicitly rejects HTTP redirect without following a provider upload URL',async()=>{
+  const previous=globalThis.fetch;let calls=0;
+  globalThis.fetch=async (url,options)=>{
+    calls++;
+    assert.equal(options.redirect,'manual');
+    return new Response('',{status:302,headers:{location:'https://untrusted.example/redirect'}});
+  };
+  try{
+    await assert.rejects(
+      ()=>geminiTranscribe(new File([new Uint8Array(50)],'synthetic.mp3',{type:'audio/mpeg'}),'en',env),
+      error=>error.code==='GEMINI_UNEXPECTED_REDIRECT' && /unexpected redirect/i.test(error.message)
+    );
+    assert.equal(calls,1,'Never follow an untrusted upstream redirect');
+  }finally{globalThis.fetch=previous;}
 });
