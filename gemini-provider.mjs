@@ -31,30 +31,54 @@ function joinWords(words){
  */
 export function parseGeminiTranscript(result){
   const parts=result?.candidates?.[0]?.content?.parts||[];
-  const segments=[];
+  const words=[];
+  // Preserve every recognized word and every provider timestamp. A zero-duration
+  // word can be represented within a wider, genuinely timed speaker turn.
   for(const part of parts){
     const trans=part?.audioTranscription;
-    if(!trans)continue;
-    if(!Array.isArray(trans.words)||!trans.words.length)continue;
-    let current=null;
+    if(!trans||!Array.isArray(trans.words)||!trans.words.length)continue;
     for(const w of trans.words){
-      const word=String(w?.word||'').trim(),speaker=String(w?.speakerLabel||trans.speakerLabel||'').trim();
-      if(!speaker||!word)throw failure('Gemini transcript is missing speaker or word text.');
+      const word=String(w?.word||'').trim(),speakerId=String(w?.speakerLabel||trans.speakerLabel||'').trim();
+      if(!word||!speakerId)throw failure('Gemini transcript is missing speaker or word text.');
       const startMs=offsetMs(w.startOffset),endMs=offsetMs(w.endOffset);
-      if(endMs<=startMs)throw failure('Gemini transcript contains invalid word timing.');
-      if(!current||current.speakerId!==speaker||current.words.length>=40||startMs-current.endMs>2400){
-        if(current)segments.push(current);
-        current={speakerId:speaker,startMs,endMs,words:[word]};
-      }else{
-        if(startMs<current.startMs)throw failure('Gemini transcript word timestamps are out of order.');
-        current.endMs=Math.max(current.endMs,endMs);current.words.push(word);
-      }
+      if(parseFloat(w.endOffset)<parseFloat(w.startOffset))
+        throw failure('Gemini word timing is reversed at word '+(words.length+1)+' (start='+startMs+'ms, end='+endMs+'ms).');
+      words.push({word,speakerId,startMs,endMs});
     }
-    if(current)segments.push(current);
   }
-  if(!segments.length)throw failure('Gemini returned no speaker-labeled, time-aligned words. Cannot complete QA-ready transcription.');
-  return segments.map(s=>({speakerId:s.speakerId,startMs:s.startMs,endMs:s.endMs,text:joinWords(s.words)}))
-    .sort((a,b)=>a.startMs-b.startMs);
+  if(!words.length)throw failure('Gemini returned no speaker-labeled, time-aligned words. Cannot complete QA-ready transcription.');
+  // Provider annotations may arrive in multiple parts. Their timestamps, not
+  // part order, determine the chronological order of overlapping speakers.
+  words.sort((a,b)=>a.startMs-b.startMs);
+  const segments=[];
+  let current=null;
+  function flush(){
+    if(!current)return;
+    if(current.endMs<=current.startMs){
+      const prev=segments[segments.length-1];
+      // Allow a zero-duration boundary word to share a nearby, valid speaker
+      // segment. Do not invent a word duration or combine different speakers.
+      if(prev&&prev.speakerId===current.speakerId&&current.startMs>=prev.startMs&&current.startMs-prev.endMs<=2400){
+        prev.endMs=Math.max(prev.endMs,current.endMs);
+        prev.words.push(...current.words);
+      }else{
+        throw failure('Gemini returned a speaker turn without measurable duration near '+current.startMs+'ms. Cannot export verified timestamps.','GEMINI_ZERO_DURATION_TURN');
+      }
+    }else{segments.push(current);}
+    current=null;
+  }
+  for(const row of words){
+    const split=current&&(
+      current.speakerId!==row.speakerId ||
+      (current.words.length>=40 && current.endMs>current.startMs && row.endMs>row.startMs) ||
+      (row.startMs-current.endMs>2400)
+    );
+    if(split)flush();
+    if(!current){current={speakerId:row.speakerId,startMs:row.startMs,endMs:row.endMs,words:[row.word]};}
+    else{current.endMs=Math.max(current.endMs,row.endMs);current.words.push(row.word);}
+  }
+  flush();
+  return segments.map(s=>({speakerId:s.speakerId,startMs:s.startMs,endMs:s.endMs,text:joinWords(s.words)}));
 }
 function audioMime(audio){
   const extension=String(audio?.name||'').split('.').pop().toLowerCase();
