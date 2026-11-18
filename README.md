@@ -1,5 +1,14 @@
 # MAFer Audio Intelligence
 
+**Current live-integration MVP:** See [README-LIVE.md](README-LIVE.md) and the `public/` frontend with `worker.mjs`. The live MVP makes actual model calls only after `OPENAI_API_KEY` has been configured in Cloudflare and the rate-limit binding deployed. No demo password is required. **Do not treat API configuration as a verified successful transcription.**
+
+---
+
+## Archived browser-only prototype documentation
+
+The following notes describe the older root-level browser prototype. It is not the current Worker application.
+
+
 Standalone, bilingual contact-centre **audio transcription and interaction intelligence** platform prototype.
 
 > **Prototype only:** all recordings, Genesys conversation IDs, CRM ticket references, service responses, provider states, tokens and errors in the application are synthetic. No actual Genesys, S3, CRM, APIM, Vault, or QA.MAFer.AI integrations are connected. Never enter real credentials or customer information into this preview.
