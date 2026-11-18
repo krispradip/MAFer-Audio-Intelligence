@@ -7,6 +7,7 @@ const MAX_PROVIDER_MESSAGE = 220;
 const MIME = Object.freeze({mp3:'audio/mp3',wav:'audio/wav',m4a:'audio/m4a',aac:'audio/aac',flac:'audio/flac',ogg:'audio/ogg',webm:'audio/webm',mpeg:'audio/mpeg',mpga:'audio/mpeg',aiff:'audio/aiff'});
 function failure(message, code='GEMINI_INVALID_RESPONSE', stage='gemini-response') { const e = new Error(message);e.code=code;e.stage=stage;return e; }
 async function responseJson(response) {
+  if(response.status>=300 && response.status<400)throw failure('Google API returned an unexpected redirect; request not followed.','GEMINI_UNEXPECTED_REDIRECT');
   const body=await response.text();let parsed;
   try {parsed=JSON.parse(body);}catch {parsed=null;}
   if(!response.ok) {
@@ -66,7 +67,7 @@ function providerUrl(model){
   return `${HOST}/v1beta/models/${model}:generateContent`;
 }
 async function postJson(url,key,data){
-  return responseJson(await fetch(url, {method:'POST',headers:{'x-goog-api-key':key,'content-type':'application/json'},body:JSON.stringify(data),redirect:'error',signal:AbortSignal.timeout(150000)}));
+  return responseJson(await fetch(url, {method:'POST',headers:{'x-goog-api-key':key,'content-type':'application/json'},body:JSON.stringify(data),redirect:'manual',signal:AbortSignal.timeout(150000)}));
 }
 export async function uploadGeminiAudio(audio, key){
   const mime=audioMime(audio);
@@ -74,7 +75,7 @@ export async function uploadGeminiAudio(audio, key){
   const started=await fetch(`${HOST}/upload/v1beta/files`,{
     method:'POST',headers:{'x-goog-api-key':key,'X-Goog-Upload-Protocol':'resumable','X-Goog-Upload-Command':'start',
       'X-Goog-Upload-Header-Content-Length':String(audio.size),'X-Goog-Upload-Header-Content-Type':mime,'content-type':'application/json'},
-    body:JSON.stringify({file:{displayName:'MAFerAudio temporary transcription'}}),redirect:'error',signal:AbortSignal.timeout(150000)
+    body:JSON.stringify({file:{displayName:'MAFerAudio temporary transcription'}}),redirect:'manual',signal:AbortSignal.timeout(150000)
   });
   if(!started.ok)await responseJson(started);
   const raw=started.headers.get('x-goog-upload-url');
@@ -84,7 +85,7 @@ export async function uploadGeminiAudio(audio, key){
     throw failure('Google returned an invalid upload destination.');
   const completed=await fetch(destination.toString(),{method:'POST',
     headers:{'X-Goog-Upload-Offset':'0','X-Goog-Upload-Command':'upload, finalize','content-type':mime},
-    body:audio,redirect:'error',signal:AbortSignal.timeout(150000)});
+    body:audio,redirect:'manual',signal:AbortSignal.timeout(150000)});
   const info=await responseJson(completed);
   if(typeof info?.file?.uri!=='string'||typeof info?.file?.name!=='string')throw failure('Gemini file upload did not return a valid file URI and name.');
   if(!info.file.name.startsWith('files/'))throw failure('Gemini returned an invalid file reference.');
@@ -92,7 +93,7 @@ export async function uploadGeminiAudio(audio, key){
 }
 async function deleteGeminiFile(name,key){
   if(!name?.startsWith('files/'))return;
-  try{await fetch(`${HOST}/v1beta/${name}`,{method:'DELETE',headers:{'x-goog-api-key':key},redirect:'error',signal:AbortSignal.timeout(12000)});}catch{}
+  try{await fetch(`${HOST}/v1beta/${name}`,{method:'DELETE',headers:{'x-goog-api-key':key},redirect:'manual',signal:AbortSignal.timeout(12000)});}catch{}
 }
 export async function geminiTranscribe(audio,requestedLanguage,env){
   if(!env.GEMINI_API_KEY)throw failure('GEMINI_API_KEY is not configured in Cloudflare.','NOT_CONFIGURED');
