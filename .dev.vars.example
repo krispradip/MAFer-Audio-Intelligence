@@ -1,4 +1,6 @@
 # Copy to .dev.vars for local development. DO NOT commit .dev.vars.
-OPENAI_API_KEY=replace-with-your-own-test-key
-TRANSCRIPTION_MODEL=gpt-4o-transcribe-diarize
-ANALYSIS_MODEL=gpt-4o-mini
+GEMINI_API_KEY=replace-with-your-own-test-key
+TRANSCRIPTION_PROVIDER=gemini
+ANALYSIS_PROVIDER=gemini
+TRANSCRIPTION_MODEL=gemini-3.5-transcribe
+ANALYSIS_MODEL=gemini-3.8-flash
