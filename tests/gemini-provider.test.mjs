@@ -108,3 +108,43 @@ test('keeps overlapping speakers in separate timestamped turns',()=>{
   const s=parseGeminiTranscript(input);
   assert.equal(s.length,2);assert.equal(s[0].speakerId,'spk_1');assert.equal(s[1].speakerId,'spk_2');
 });
+
+
+test('Gemini transient 503 retries only model generation and reuses already uploaded file',async()=>{
+  const prior=globalThis.fetch;const calls=[];let modelCalls=0;
+  globalThis.fetch=async (url,opts)=>{
+    calls.push({url:String(url),method:opts.method});
+    if(calls.length===1)return new Response('',{headers:{'x-goog-upload-url':'https://generativelanguage.googleapis.com/upload/session-test'}});
+    if(calls.length===2)return new Response(JSON.stringify({file:{uri:'https://generativelanguage.googleapis.com/v1beta/files/test',name:'files/test'}}));
+    if(String(url).includes(':generateContent')){
+      modelCalls++;
+      if(modelCalls<=2)return new Response(JSON.stringify({error:{message:'High model demand'}}),{status:503});
+      return new Response(JSON.stringify(example));
+    }
+    if(opts.method==='DELETE')return new Response('{}');
+    throw Error('Unexpected fetch');
+  };
+  try{
+    const result=await geminiTranscribe(new File([new Uint8Array(100)],'synthetic.wav',{type:'audio/wav'}),'',env);
+    assert.equal(result.segments.length,2);
+    assert.equal(modelCalls,3);
+    assert.equal(calls.filter(x=>x.url.includes('/upload/v1beta/files')).length,1);
+    assert.equal(calls.filter(x=>x.method==='DELETE').length,1);
+    assert.equal(calls.length,6);
+  }finally{globalThis.fetch=prior;}
+});
+test('Gemini nontransient 400 is never retried',async()=>{
+  const prior=globalThis.fetch;let modelCalls=0,calls=0;
+  globalThis.fetch=async(url,opts)=>{
+    calls++;
+    if(calls===1)return new Response('',{headers:{'x-goog-upload-url':'https://generativelanguage.googleapis.com/upload/test'}});
+    if(calls===2)return new Response(JSON.stringify({file:{uri:'https://generativelanguage.googleapis.com/v1beta/files/test',name:'files/test'}}));
+    if(opts.method==='DELETE')return new Response('{}');
+    modelCalls++;return new Response(JSON.stringify({error:{message:'Invalid request'}}),{status:400});
+  };
+  try{
+    await assert.rejects(()=>geminiTranscribe(new File([new Uint8Array(100)],'synthetic.wav'),'en',env),error=>error.code==='GEMINI_400');
+    assert.equal(modelCalls,1);
+    assert.equal(calls,4);
+  }finally{globalThis.fetch=prior;}
+});
