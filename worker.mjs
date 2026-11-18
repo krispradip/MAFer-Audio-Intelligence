@@ -26,7 +26,11 @@ function cleanSegments(input) {
 }
 function metadata(input){ const m=isObject(input)?input:{};return {conversationId:text(m.conversationId,128), agentName:text(m.agentName,120),bu:text(m.bu,80),brand:text(m.brand,80),market:text(m.market,80),language:text(m.language,40),source:'Manual audio upload'}; }
 async function provider(url, key, options) {
-  const response=await fetch(url,{...options,headers:{Authorization:'Bearer '+key,...options.headers},redirect:'error',signal:AbortSignal.timeout(150000)});
+  const response=await fetch(url,{...options,headers:{Authorization:'Bearer '+key,...options.headers},redirect:'manual',signal:AbortSignal.timeout(150000)});
+  if(response.status>=300 && response.status<400) {
+    const err=new Error('Model provider returned an unexpected redirect; request not followed.');
+    err.status=response.status;err.code='PROVIDER_REDIRECT';throw err;
+  }
   const body=await response.text(); let parsed;
   try{parsed=JSON.parse(body)}catch{parsed=null}
   if(!response.ok) {
