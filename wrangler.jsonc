@@ -6,6 +6,18 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
-  }
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "ratelimits": [
+    {
+      "name": "AUDIO_RATE_LIMITER",
+      "namespace_id": "281108",
+      "simple": {
+        "limit": 6,
+        "period": 60
+      }
+    }
+  ]
 }
