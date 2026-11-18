@@ -76,3 +76,35 @@ test('Too many timestamped speech segments return structured HTTP 422',async()=>
    assert.equal(response.error.stage,'timestamp-validation');
  }finally{globalThis.fetch=prior;}
 });
+
+
+test('Persistent Gemini 503 returns HTTP 503 after exactly two bounded retries, without fake transcript',async()=>{
+  const prior=globalThis.fetch;
+  let uploads=0,modelCalls=0,deletions=0;
+  globalThis.fetch=async(url,opts)=>{
+    if(String(url).endsWith('/upload/v1beta/files')){
+      uploads++;return new Response('',{headers:{'x-goog-upload-url':'https://generativelanguage.googleapis.com/upload/test'}});
+    }
+    if(String(url).includes('/upload/test'))
+      return new Response(JSON.stringify({file:{name:'files/abc',uri:'https://generativelanguage.googleapis.com/v1beta/files/abc'}}));
+    if(String(url).includes(':generateContent')){
+      modelCalls++;return new Response(JSON.stringify({error:{message:'The model is currently experiencing high demand'}}),{status:503});
+    }
+    if(opts.method==='DELETE'){deletions++;return new Response('{}');}
+    throw Error('Unexpected request '+url);
+  };
+  try{
+    const form=new FormData();
+    form.append('audio',new File([new Uint8Array(100)],'synthetic.wav',{type:'audio/wav'}));
+    const res=await handle(new Request('https://localhost/api/transcribe',{method:'POST',body:form}),env);
+    const body=await res.json();
+    assert.equal(res.status,503);
+    assert.equal(body.ok,false);
+    assert.equal(body.error.code,'GEMINI_503');
+    assert.equal(body.error.stage,'gemini-model-request');
+    assert.match(body.error.message,/three model attempts/i);
+    assert.equal(modelCalls,3);
+    assert.equal(uploads,1);
+    assert.equal(deletions,1);
+  }finally{globalThis.fetch=prior;}
+});
