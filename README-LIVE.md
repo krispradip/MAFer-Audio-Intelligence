@@ -1,68 +1,67 @@
-# MAFer Audio Intelligence — Live Audio Analyzer MVP
+# MAFer Audio Intelligence — working Gemini-powered MVP
 
-This is **working integration code** (real OpenAI API calls), not the legacy interactive/synthetic prototype. The deployed Worker serves **only** the files in `public/`. The older root `index.html`, `app.js` and `sample-data.js` are retained as archive/source reference and are NOT deployed through this Wrangler configuration.
+This is a **standalone audio transcription and interaction-intelligence application**, separate from QA.MAFer.AI. The Worker code calls real Google AI models and refuses incomplete timestamps or speaker attribution. No example interactions are seeded into the live interface. **Code integration and mocked tests are not proof of a completed live Gemini call**.
 
-## Live workflow
+## Architecture
 
-1. Open the Worker site. No access code is required in the application. The Worker must have `OPENAI_API_KEY` configured and a working Cloudflare rate-limit binding.
-2. Choose a real, non-sensitive English/Arabic recording up to **24 MiB**. Optional metadata: Genesys Conversation ID, agent name, BU, brand and market.
-3. **Transcribe audio** invokes `POST /api/transcribe` → OpenAI `gpt-4o-transcribe-diarize` with `diarized_json`, `chunking_strategy=auto`. This returns real **speaker IDs and per-turn start/end timestamps**. Invalid/missing timestamps fail closed.
-4. Confirm which speaker is **Agent** and **Customer** in the UI. These roles are not invented by the LLM.
-5. **Analyze interaction** invokes `POST /api/analyze` → OpenAI `gpt-4o-mini` in JSON mode. The model extracts reason for contact, issue(s), action(s), resolution, commitments, next steps, closing customer sentiment, optional language-supported emotions/signals and segment evidence. It **does not** analyze acoustic tone, silence or overlap; transcript-only evidence cannot prove those.
-6. Download verified transcript TXT and QA handoff JSON. **No QA score is generated.** The QA platform is NOT called; S3/CRM ingestion are not connected yet.
+- **Frontend:** `public/`, served by Cloudflare Workers static assets.
+- **Backend:** `worker.mjs`, with a provider-independent output schema and the isolated `gemini-provider.mjs` adapter.
+- **Transcription provider (default):** Gemini `gemini-3.5-transcribe`. The Worker uploads audio to Gemini Files API, requests **VERBATIM**, speaker diarization and **word-level timestamps**, and maps speaker words into timestamped turns for the existing UI. No invented offsets or speaker assignments. Gemini's word timestamps may affect recognition accuracy; verify against the audio.
+- **Intelligence provider (default):** Gemini `gemini-3.8-flash`, JSON generation grounded in the confirmed transcript. Outputs closing sentiment, issues, actions, commitments, next steps, resolutions and segment-linked evidence. It does not award QA scores or infer tone, silence or overlaps solely from text.
+- **Alternative adapters:** The original OpenAI code remains selectable with `TRANSCRIPTION_PROVIDER=openai` and/or `ANALYSIS_PROVIDER=openai`. The provider boundary allows a future Amazon Transcribe adapter without changing the handoff JSON.
+- **Export:** Timestamped transcript TXT and QA.MAFer.AI-ready JSON. No S3 push or QA evaluation in this MVP.
 
-No test recordings, synthetic interaction cards, fabricated model responses or placeholder success states are included. Runtime data is held in the open browser tab and HTTP request/response only. Nothing is persisted by this application. OpenAI processes the audio/transcript for these two calls. No audio file is stored by the Worker.
+## One-time Cloudflare configuration
 
-## Deploy using Cloudflare Workers
+1. Store an approved Google AI Studio API key as **Secret** `GEMINI_API_KEY` under Cloudflare → Workers & Pages → `mafer-audio-intelligence` → Settings → Variables and Secrets. Do not paste the key into GitHub, browser JavaScript or this chat.
+2. Deploy the **latest GitHub main** Worker and `public/` assets with the repository Wrangler configuration. GitHub commits do not, by themselves, prove the deployed Worker was updated.
+3. The `wrangler.jsonc` configuration includes an `AUDIO_RATE_LIMITER` binding. The Worker refuses paid model requests if this guard is missing.
+4. Optional environment variables (defaults apply when omitted):
 
-**Prerequisites:** Cloudflare account with Workers, access to this repository, an OpenAI API key permitted for the models above. These secrets must be set on the Worker, **never committed or entered into the public frontend**.
+   ```text
+   TRANSCRIPTION_PROVIDER=gemini
+   ANALYSIS_PROVIDER=gemini
+   TRANSCRIPTION_MODEL=gemini-3.5-transcribe
+   ANALYSIS_MODEL=gemini-3.8-flash
+   ```
 
-```sh
-npm install
-npx wrangler login
-npx wrangler secret put OPENAI_API_KEY
-npx wrangler deploy
-```
+5. For deployment from a machine with Node.js and access to the correct Cloudflare account:
 
-Run `wrangler secret put` using the same account and `name` as in `wrangler.jsonc`. The Worker name is `mafer-audio-intelligence` and assets are built from `public/`. If the existing Cloudflare site is deployed by a different method, change/reconcile its deployment config carefully; a GitHub commit alone does **not** redeploy the site.
+   ```sh
+   npm install
+   npx wrangler login
+   npx wrangler deploy
+   ```
 
-**For local development** copy `.dev.vars.example` to `.dev.vars`, enter a non-production OpenAI API key (do **not** commit `.dev.vars`), then:
+If the secret was added **before** deploying the new Worker, preserve it on the same Worker/environment. The browser does not require an access code, but the public URL needs a Cloudflare Access/WAF restriction and provider usage budgets to prevent unauthorized consumption. A per-IP rate limiter alone does not protect customer data or cap total spend.
 
-```sh
-npm install
-npm run dev
-```
+## Verify before the demonstration
 
-No access-code entry or `DEMO_ACCESS_TOKEN` is used. The Worker requires an `AUDIO_RATE_LIMITER` binding and rejects requests when it is missing. The included Wrangler configuration limits each IP to six `/api/*` requests per minute per Cloudflare location. **A per-IP rate limit is not authentication or a hard cost cap.** Configure Cloudflare Access or another private allowlist and OpenAI budget limits before making the model-backed site broadly available; use synthetic or expressly authorized non-sensitive recordings for this prototype. Do not upload real customer recordings to an unapproved public Workers URL or personal OpenAI account.
+1. Open `https://mafer-audio-intelligence.kris-pradip.workers.dev/api/health`.
+2. Confirm `engineConfigured: true`, `rateLimitConfigured: true`, `transcriptionProvider: gemini`, `analysisProvider: gemini`, and the two Gemini model names. **Health checks configuration, not provider accessibility**.
+3. Upload a short, **non-sensitive authorized** English or Arabic conversation (two speakers, up to 24 MiB). Select its language or auto-detection and click **Transcribe audio**.
+4. Confirm that recognized words, diarized speakers and audio-relative start/end times appear. Assign Agent and Customer roles, then click **Analyze interaction with AI**.
+5. Verify the generated summary, sentiment, evidence playback and downloadable JSON against the recording. The sidebar's Transcript & Evidence and QA Handoff actions unlock only when their stages are complete.
 
+If a model call is blocked by account access, billing, quotas, file format, network settings or unexpected API output, the application shows an error. **No synthetic success fallback is permitted.**
 
-### Minimum one-time Cloudflare setup
+## Gemini API details
 
-The **only API secret required** is `OPENAI_API_KEY`. Configure it in **Cloudflare Dashboard → Workers & Pages → mafer-audio-intelligence → Settings → Variables and Secrets → Add → Secret**. Paste the approved OpenAI API key there (never into the webpage or GitHub). Configure Cloudflare Access or a restrictive WAF rule on the public Worker before making the demo broadly reachable.
+The implementation uses Google's published Files resumable upload API and `generateContent` transcription/JSON endpoints. Gemini transcription only accepts supported audio containers; the adapter rejects MP4 video files without converting them. The product's 24 MiB upload limit is intentionally conservative. With diarization/word timestamps enabled, Gemini documents a 30-minute duration limit. Word timestamps, speaker attribution and a verified recording should be retained for downstream evidence.
 
-Redeploy the **current GitHub main** using `npx wrangler deploy` so that the `AUDIO_RATE_LIMITER` binding is installed. GitHub commits alone do not deploy the Worker. Visit `/api/health` and confirm `engineConfigured: true` and `rateLimitConfigured: true`; these flags mean **configured**, not that a real model call has succeeded. Process a short, non-sensitive authorized recording and check transcript timestamps, speaker mapping, and output JSON to prove the end-to-end integration.
+When using Files API, **Google hosts a temporary copy of the uploaded audio under its own data policies**. The adapter attempts to delete that uploaded file after transcription, including in error paths; deletion is best-effort and is not a substitute for privacy and retention approval. Do not use customer call recordings on this personal/public test Worker or unapproved Google AI Studio account.
 
-## Test
+## Test and production readiness
 
 ```sh
 npm test
 node --check worker.mjs
+node --check gemini-provider.mjs
 node --check public/app.js
 ```
 
-Tests mock upstream HTTP responses **only to verify integration logic, gating, failure modes and evidence safety**. They are not live-provider tests. A real smoke test requires deploying the Worker with valid secrets, uploading an authorized non-sensitive audio file, confirming both speaker roles and verifying the JSON export. `GET /api/health` reports configuration status, not successful LLM connectivity.
+Tests mock provider responses to validate request formatting, time alignment, normalization and error cases. They do not prove live vendor connectivity. Production needs Cloudflare Access/corporate SSO, centralized credentials, S3/Genesys integration, asynchronous ingestion, hardened rate limits, retention and audit controls.
 
-## API / Handoff
-
-- `GET /api/health` — indicates which services are configured; does not imply a successful API call.
-- `POST /api/transcribe` — form-data `audio`, optional `language` (`en`, `ar`); no demo access-code header. Requires the `AUDIO_RATE_LIMITER` binding.
-- `POST /api/analyze` — JSON `{segments, speakerMapping, metadata}`; no demo access-code header. Requires the `AUDIO_RATE_LIMITER` binding.
-- Output: `MAFerAudio_<conversation_id>_QA_handoff.json` with `handoffSchemaVersion=1.0`, `qaScoringPerformed=false`, confirmed role mapping, audio-derived `startMs/endMs`, original text, structured interaction intelligence and evidence indices.
-
-### Constraints / Migration
-
-- OpenAI currently limits audio transcription uploads to 25 MB, so this MVP uses a 24 MiB limit; no automatic splitting is implemented. Large recordings require a production streaming/chunking pipeline.
-- The MVP `gpt-4o-transcribe-diarize` model is **deprecated and due to be shut down February 26, 2027**. Do not build a permanent production dependency on it. Plan migration to `gpt-transcribe` with a supported external diarization/timestamp alignment stage, or a supported later-model equivalent.
-- Speaker roles require human verification. QA should ingest **only** JSON with role mapping confirmed. More complex conference calls and one-speaker recordings are not supported in this constrained MVP.
-- Segment evidence is structurally verified and tied to recognized speech. The LLM cannot prove CRM operations, acoustic signals, or a resolution that was not confirmed in dialogue.
-- Corporate APIM/SSO, CRM writeback, Genesys automatic ingestion, S3 and managed persistence are **not** implemented and require separate deployment approval.
+Google references:
+- https://ai.google.dev/gemini-api/docs/generate-content/transcribe
+- https://ai.google.dev/gemini-api/docs/file-input-methods
