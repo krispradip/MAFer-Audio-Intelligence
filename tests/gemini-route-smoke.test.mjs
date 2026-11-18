@@ -34,3 +34,45 @@ test('Worker Gemini analysis generates normalized evidence and never applies QA 
  const data=await res.json();assert.equal(res.status,200);assert.equal(data.summaryModel,'gemini-3.8-flash');assert.deepEqual(data.intelligence.issues[0].evidenceSegmentIndices,[0]);assert.equal(data.qaScoringPerformed,undefined);
  }finally{globalThis.fetch=prior;}
 });
+test('Gemini missing word timestamps returns a precise parser stage rather than simulated success',async()=>{
+ const prior=globalThis.fetch;let calls=0;
+ globalThis.fetch=async(url,opts)=>{
+   calls++;
+   if(calls===1)return new Response('',{status:200,headers:{'x-goog-upload-url':'https://generativelanguage.googleapis.com/upload/test'}});
+   if(calls===2)return new Response(JSON.stringify({file:{name:'files/abc',uri:'https://generativelanguage.googleapis.com/v1beta/files/abc'}}));
+   if(calls===3)return new Response(JSON.stringify({candidates:[{content:{parts:[{audioTranscription:{
+     speakerLabel:'spk_1',words:[{word:'Hello',endOffset:'0.6s'}]
+   }}]}}]}));
+   if(calls===4)return new Response('{}');
+   throw Error('Unexpected request');
+ };
+ try{
+   const form=new FormData();form.append('audio',new File([new Uint8Array(40)],'test.wav',{type:'audio/wav'}));
+   const res=await handle(new Request('https://localhost/api/transcribe',{method:'POST',body:form}),env);
+   const response=await res.json();assert.equal(res.status,502);
+   assert.equal(response.ok,false);assert.equal(response.error.code,'GEMINI_INVALID_RESPONSE');
+   assert.equal(response.error.stage,'gemini-transcript-output');
+   assert.match(response.error.message,/timestamps/i);
+ }finally{globalThis.fetch=prior;}
+});
+test('Too many timestamped speech segments return structured HTTP 422',async()=>{
+ const prior=globalThis.fetch;let calls=0;
+ const pieces=Array.from({length:2001},(_,i)=>({audioTranscription:{
+   speakerLabel:i%2?'spk_2':'spk_1',words:[{word:'Hello',startOffset:i+'s',endOffset:(i+0.5)+'s'}]
+ }}));
+ globalThis.fetch=async()=>{
+   calls++;
+   if(calls===1)return new Response('',{status:200,headers:{'x-goog-upload-url':'https://generativelanguage.googleapis.com/upload/test'}});
+   if(calls===2)return new Response(JSON.stringify({file:{name:'files/abc',uri:'https://generativelanguage.googleapis.com/v1beta/files/abc'}}));
+   if(calls===3)return new Response(JSON.stringify({candidates:[{content:{parts:pieces}}]}));
+   if(calls===4)return new Response('{}');
+   throw Error('Unexpected request');
+ };
+ try{
+   const form=new FormData();form.append('audio',new File([new Uint8Array(20)],'test.wav',{type:'audio/wav'}));
+   const res=await handle(new Request('https://localhost/api/transcribe',{method:'POST',body:form}),env);
+   const response=await res.json();assert.equal(res.status,422);
+   assert.equal(response.error.code,'TRANSCRIPT_SEGMENT_LIMIT');
+   assert.equal(response.error.stage,'timestamp-validation');
+ }finally{globalThis.fetch=prior;}
+});
