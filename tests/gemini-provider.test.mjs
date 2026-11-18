@@ -63,3 +63,48 @@ test('Gemini explicitly rejects HTTP redirect without following a provider uploa
     assert.equal(calls,1,'Never follow an untrusted upstream redirect');
   }finally{globalThis.fetch=previous;}
 });
+
+
+test('preserves zero-duration words inside genuinely timestamped speaker turns',()=>{
+  const input={candidates:[{content:{parts:[
+    {audioTranscription:{speakerLabel:'spk_1',words:[
+      {word:'I',startOffset:'0s',endOffset:'0.2s'},
+      {word:'uh',startOffset:'0.2s',endOffset:'0.2s'},
+      {word:'agree.',startOffset:'0.2s',endOffset:'0.6s'}
+    ]}},
+    {audioTranscription:{speakerLabel:'spk_2',words:[
+      {word:'Yes.',startOffset:'1s',endOffset:'1.3s'}
+    ]}}
+  ]}}]};
+  const s=parseGeminiTranscript(input);
+  assert.deepEqual(s,[{speakerId:'spk_1',startMs:0,endMs:600,text:'I uh agree.'},{speakerId:'spk_2',startMs:1000,endMs:1300,text:'Yes.'}]);
+});
+test('zero-length words across adjacent Gemini parts attach to the same measurable speaker turn',()=>{
+  const input={candidates:[{content:{parts:[
+    {audioTranscription:{speakerLabel:'spk_1',words:[{word:'Um',startOffset:'0s',endOffset:'0s'}]}},
+    {audioTranscription:{speakerLabel:'spk_1',words:[{word:'hello',startOffset:'0.2s',endOffset:'0.7s'}]}},
+    {audioTranscription:{speakerLabel:'spk_1',words:[{word:'!',startOffset:'0.7s',endOffset:'0.7s'}]}}
+  ]}}]};
+  assert.deepEqual(parseGeminiTranscript(input),[{speakerId:'spk_1',startMs:0,endMs:700,text:'Um hello!'}]);
+});
+test('sub-millisecond offsets rounded to one millisecond can be grouped, without altering provider times',()=>{
+  const input={candidates:[{content:{parts:[{audioTranscription:{speakerLabel:'spk_1',words:[
+    {word:'Hm',startOffset:'0.0001s',endOffset:'0.0002s'},
+    {word:'yes',startOffset:'0.3s',endOffset:'0.5s'}
+  ]}}]}}]};
+  assert.deepEqual(parseGeminiTranscript(input),[{speakerId:'spk_1',startMs:0,endMs:500,text:'Hm yes'}]);
+});
+test('rejects reversed timestamps and turns with no measurable duration; never invents offsets',()=>{
+  const one=(words)=>({candidates:[{content:{parts:[{audioTranscription:{speakerLabel:'spk_1',words}}]}}]});
+  assert.throws(()=>parseGeminiTranscript(one([{word:'Hi',startOffset:'2s',endOffset:'1s'}])),/reversed/);
+  assert.throws(()=>parseGeminiTranscript(one([{word:'Hi',startOffset:'1s',endOffset:'1s'}])),e=>e.code==='GEMINI_ZERO_DURATION_TURN');
+  assert.throws(()=>parseGeminiTranscript(one([{word:'Um',startOffset:'0s',endOffset:'0s'},{word:'Hello',startOffset:'5s',endOffset:'6s'}])),e=>e.code==='GEMINI_ZERO_DURATION_TURN');
+});
+test('keeps overlapping speakers in separate timestamped turns',()=>{
+  const input={candidates:[{content:{parts:[
+    {audioTranscription:{speakerLabel:'spk_1',words:[{word:'A',startOffset:'0s',endOffset:'1s'}]}},
+    {audioTranscription:{speakerLabel:'spk_2',words:[{word:'B',startOffset:'0.8s',endOffset:'1.1s'}]}}
+  ]}}]};
+  const s=parseGeminiTranscript(input);
+  assert.equal(s.length,2);assert.equal(s[0].speakerId,'spk_1');assert.equal(s[1].speakerId,'spk_2');
+});
