@@ -20,7 +20,7 @@ function normalizeBU(value){
   return ({vox:'VOX',share:'SHARE',ambu:'AMBU',retail:'Retail',other:'Other'})[normalized]||'';
 }
 function normalizeMarket(value){
-  const key=tidy(value).toLowerCase().replace(/[._-]+/g,' ').replace(/\\s+/g,' ').trim();
+  const key=tidy(value).toLowerCase().replace(/[._-]+/g,' ').replace(/\s+/g,' ').trim();
   return ({
     'uae':'UAE','ae':'UAE','united arab emirates':'UAE',
     'ksa':'KSA','sa':'KSA','saudi arabia':'KSA',
