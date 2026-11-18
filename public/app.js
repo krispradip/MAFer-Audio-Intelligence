@@ -52,9 +52,8 @@ $('dropzone').addEventListener('drop',e=>{e.preventDefault();$('dropzone').class
 $('player').addEventListener('loadedmetadata',()=>{if(Number.isFinite($('player').duration))durationMs=Math.round($('player').duration*1000);});
 $('clearBtn').addEventListener('click',()=>{if(busy)return;reset();});
 async function api(endpoint, options={}){
-  const code=$('accessCode').value;if(!code)throw new Error('Enter the private demo access code first.');
   let response;
-  try{response=await fetch('/api/'+endpoint,{method:'POST',headers:{'x-demo-token':code,...options.headers},body:options.body,cache:'no-store',credentials:'same-origin'});}
+  try{response=await fetch('/api/'+endpoint,{method:'POST',headers:{...options.headers},body:options.body,cache:'no-store',credentials:'same-origin'});}
   catch(e){throw new Error('Connection failed. Check the deployed backend and network. '+e.message);}
   $('lastRequest').textContent=endpoint+' · HTTP '+response.status;
   let data;try{data=await response.json();}catch{throw new Error('Server returned a non-JSON response. Check the Worker deployment.');}
@@ -64,10 +63,11 @@ async function api(endpoint, options={}){
 async function health(){
   try{const r=await fetch('/api/health',{cache:'no-store'});const d=await r.json();
     if(!r.ok||!d.ok)throw new Error('Not ready');
-    $('engineStatus').textContent=!d.engineConfigured?'AI key not configured':!d.accessConfigured?'Access code not configured':'Processing API configured';
+    $('engineStatus').textContent=!d.engineConfigured?'OpenAI key not configured':!d.rateLimitConfigured?'Processing guard not configured':'Processing API configured';
     $('sttModel').textContent=d.transcriptionModel||'Unknown';$('llmModel').textContent=d.analysisModel||'Unknown';
-    $('engineStatus').style.color=d.engineConfigured&&d.accessConfigured?'#16886e':'#ba5964';
-  }catch{ $('engineStatus').textContent='Backend unavailable';$('engineStatus').style.color='#ba5964';$('sttModel').textContent='Unavailable';$('llmModel').textContent='Unavailable';}
+    $('protectionStatus').textContent=d.engineConfigured&&d.rateLimitConfigured?'Ready for live testing (not yet verified)':!d.engineConfigured?'Missing OPENAI_API_KEY secret':'Rate limiter must be deployed';
+    $('engineStatus').style.color=d.engineConfigured&&d.rateLimitConfigured?'#16886e':'#ba5964';
+  }catch{ $('engineStatus').textContent='Backend unavailable';$('engineStatus').style.color='#ba5964';$('sttModel').textContent='Unavailable';$('llmModel').textContent='Unavailable';$('protectionStatus').textContent='Backend unavailable';}
 }
 $('refreshHealth').addEventListener('click',health);
 $('transcribeBtn').addEventListener('click',async()=>{
