@@ -5,7 +5,7 @@
 const HOST = 'https://generativelanguage.googleapis.com';
 const MAX_PROVIDER_MESSAGE = 220;
 const MIME = Object.freeze({mp3:'audio/mp3',wav:'audio/wav',m4a:'audio/m4a',aac:'audio/aac',flac:'audio/flac',ogg:'audio/ogg',webm:'audio/webm',mpeg:'audio/mpeg',mpga:'audio/mpeg',aiff:'audio/aiff'});
-function failure(message, code='GEMINI_INVALID_RESPONSE') { const e = new Error(message);e.code=code;return e; }
+function failure(message, code='GEMINI_INVALID_RESPONSE', stage='gemini-response') { const e = new Error(message);e.code=code;e.stage=stage;return e; }
 async function responseJson(response) {
   const body=await response.text();let parsed;
   try {parsed=JSON.parse(body);}catch {parsed=null;}
@@ -99,15 +99,16 @@ export async function geminiTranscribe(audio,requestedLanguage,env){
   const model=env.TRANSCRIPTION_MODEL||'gemini-3.5-transcribe';
   let file;
   try{
-    file=await uploadGeminiAudio(audio,env.GEMINI_API_KEY);
+    try{file=await uploadGeminiAudio(audio,env.GEMINI_API_KEY);}
+    catch(e){e.stage=e.stage||'audio-upload';throw e;}
     const cfg={diarization:true,wordTimestamp:true,mode:'VERBATIM'};
     if(requestedLanguage==='en')cfg.languageCodes=['en-US'];
     if(requestedLanguage==='ar')cfg.languageCodes=['ar-XA'];
-    const result=await postJson(providerUrl(model),env.GEMINI_API_KEY,{
+    let result;try{result=await postJson(providerUrl(model),env.GEMINI_API_KEY,{
       contents:[{role:'user',parts:[{fileData:{fileUri:file.uri,mimeType:file.mime}}]}],
       generationConfig:{audioTranscriptionConfig:cfg}
-    });
-    const segments=parseGeminiTranscript(result);
+    });}catch(e){e.stage='gemini-model-request';throw e;}
+    let segments;try{segments=parseGeminiTranscript(result);}catch(e){e.stage='gemini-transcript-output';throw e;}
     return {segments,language:requestedLanguage==='en'?'English':requestedLanguage==='ar'?'Arabic':'Auto-detected',provider:{transcriptionModel:model},speakerIds:[...new Set(segments.map(s=>s.speakerId))]};
   }finally{if(file)await deleteGeminiFile(file.name,env.GEMINI_API_KEY);}
 }
