@@ -43,6 +43,13 @@ If the secret was added **before** deploying the new Worker, preserve it on the 
 - **VOX** and **UAE** are existing editable *presets*, not inferred facts. A brand is never fabricated from the BU field, and agent identity is not guessed from speech. Language stays on automatic bilingual recognition unless explicitly supplied by metadata or the user.
 - To fully populate all fields from Genesys without a separate metadata file, a corporate Genesys OAuth/service integration and a conversation-ID lookup are still required. Do not put Genesys access tokens into public browser code.
 
+## Temporary Gemini capacity errors (HTTP 503)
+
+- A Gemini `503` with a "high demand" or "UNAVAILABLE" message is an upstream capacity issue, **not** evidence of an invalid audio file or missing API key.
+- Model generation calls automatically use a maximum of **three attempts total** (initial call plus two retries) with bounded increasing backoff. The temporary uploaded recording is reused; it is **not uploaded again per attempt**.
+- Invalid input, authorization, missing credentials and timestamp-validation failures are **not retried**. HTTP 503 is preserved if all attempts fail, so the UI can distinguish a temporary vendor issue from an application validation error.
+- An exhausted retry budget never produces a synthetic transcript or marks a recording complete. The user may retry later, or a future approved provider adapter may be selected. No fallback model is silently substituted.
+
 ## Verify before the demonstration
 
 1. Open `https://mafer-audio-intelligence.kris-pradip.workers.dev/api/health`.
