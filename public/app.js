@@ -55,7 +55,7 @@ $('importMetadataBtn').addEventListener('click',()=>$('metadataFile').click());
 $('metadataFile').addEventListener('change',async event=>{
   const imported=event.target.files?.[0];
   if(!imported)return;
-  if(imported.size>256*1024 || !/\\.json$/i.test(imported.name))return notice('Select a Genesys metadata JSON smaller than 256 KB.','error');
+  if(imported.size>256*1024 || !/\.json$/i.test(imported.name))return notice('Select a Genesys metadata JSON smaller than 256 KB.','error');
   let values;
   try{values=metadataFromJson(JSON.parse(await imported.text()));}
   catch(error){return notice('Metadata import failed: '+error.message,'error');}
