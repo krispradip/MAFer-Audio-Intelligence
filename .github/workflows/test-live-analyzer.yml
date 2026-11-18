@@ -24,5 +24,6 @@ jobs:
           node --check worker.mjs
           node --check gemini-provider.mjs
           node --check public/app.js
+          node --check public/metadata.js
       - name: Run integration tests (mock provider responses)
         run: npm test
