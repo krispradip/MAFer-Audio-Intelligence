@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local development. DO NOT commit .dev.vars.
+OPENAI_API_KEY=replace-with-your-own-test-key
+DEMO_ACCESS_TOKEN=choose-a-long-private-passcode
+TRANSCRIPTION_MODEL=gpt-4o-transcribe-diarize
+ANALYSIS_MODEL=gpt-4o-mini
