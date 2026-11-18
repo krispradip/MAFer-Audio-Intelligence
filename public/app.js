@@ -57,7 +57,15 @@ async function api(endpoint, options={}){
   catch(e){throw new Error('Connection failed. Check the deployed backend and network. '+e.message);}
   $('lastRequest').textContent=endpoint+' · HTTP '+response.status;
   let data;try{data=await response.json();}catch{throw new Error('Server returned a non-JSON response. Check the Worker deployment.');}
-  if(!response.ok||!data.ok)throw new Error(data.error?.message||'Request failed with HTTP '+response.status);
+  if(!response.ok||!data.ok){
+    const details=data?.error||{};
+    const code=typeof details.code==='string'?details.code:'HTTP_'+response.status;
+    const stage=typeof details.stage==='string'?details.stage:'unknown-stage';
+    const message=typeof details.message==='string'?details.message:'Request failed with HTTP '+response.status;
+    const error=new Error('['+code+' at '+stage+'] '+message);
+    error.httpStatus=response.status;error.errorCode=code;error.errorStage=stage;
+    throw error;
+  }
   return data;
 }
 async function health(){
@@ -90,7 +98,11 @@ $('transcribeBtn').addEventListener('click',async()=>{
     status('stt','done',res.segments.length+' timestamped segments produced');status('roles','busy','Assign speaker roles to continue');
     notice('Actual audio transcription completed. Confirm agent and customer speakers before analysis.');
     $('transcriptionPanel').scrollIntoView({behavior:'smooth',block:'start'});
-  }catch(e){status('stt','bad','Transcription failed');steps(1);notice('Transcription failed: '+e.message,'error');}
+  }catch(e){
+    const marker=e.httpStatus?'HTTP '+e.httpStatus+' · '+(e.errorCode||'PROCESSING_FAILED')+' · '+(e.errorStage||'unknown'):'Transcription request failed';
+    status('stt','bad',marker);steps(1);
+    notice('Transcription failed: '+e.message+' — '+(e.httpStatus?'HTTP '+e.httpStatus:'connection error')+'. The audio was not transcribed.','error');
+  }
   finally{busy=false;$('transcribeBtn').disabled=!file;}
 });
 function roleReady(){const r=Object.values(roles);return r.length>0&&r.every(x=>['Agent','Customer','Other'].includes(x))&&r.includes('Agent')&&r.includes('Customer');}
@@ -119,7 +131,10 @@ $('analyzeBtn').addEventListener('click',async()=>{
     renderResults();$('resultsPanel').hidden=false;syncNavigation();status('llm','done','Live LLM response received');status('qa','done','QA-ready JSON available for download');
     completeCount++;$('completedCount').textContent=String(completeCount);notice('Analysis completed using the real LLM. Download the QA handoff JSON.');
     $('resultsPanel').scrollIntoView({behavior:'smooth',block:'start'});
-  }catch(e){steps(2);status('llm','bad','Analysis failed');notice('AI analysis failed: '+e.message,'error');}
+  }catch(e){
+    steps(2);status('llm','bad',e.httpStatus?'HTTP '+e.httpStatus+' · '+(e.errorCode||'PROCESSING_FAILED'):'Analysis failed');
+    notice('AI analysis failed: '+e.message,'error');
+  }
   finally{busy=false;$('analyzeBtn').disabled=!roleReady();}
 });
 function evidence(indices){
