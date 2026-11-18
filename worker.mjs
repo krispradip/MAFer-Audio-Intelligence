@@ -158,6 +158,7 @@ export async function handle(request,env={}){
       return fail(404,'NOT_FOUND','Unknown API endpoint.');
     }catch(err){
       const status=err.code==='NOT_CONFIGURED'?503:err.code==='UNSUPPORTED_AUDIO'?415:err.code==='GEMINI_429'?429:
+        err.code==='GEMINI_503'?503:
         err.code?.startsWith('TRANSCRIPT_')?422:
         err.code?.startsWith('PROVIDER_')||err.code?.startsWith('GEMINI_')?502:
         (/Invalid|missing|Confirm|No valid|Transcript|speaker|segment|object required|exceeds|long|return/.test(err.message)?422:502);
