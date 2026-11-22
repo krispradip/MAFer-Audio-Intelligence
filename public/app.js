@@ -1,5 +1,6 @@
 // Actual audio and model responses only. No seeded interactions or fake success statuses.
 import {conversationIdFromFilename,metadataFromJson} from './metadata.js';
+import {localFoldersSupported,selectFolder,getFolder,listAudioFiles,testLocalFolder,saveToLocalFolder} from './local-folders.js';
 const $ = id => document.getElementById(id);
 const safe = x => String(x??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clock=ms=>{const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);return (h?String(h).padStart(2,'0')+':':'')+String(m%60).padStart(2,'0')+':'+String(s%60).padStart(2,'0')+'.'+String(ms%1000).padStart(3,'0');};
@@ -19,7 +20,10 @@ function syncNavigation(){
 }
 document.querySelectorAll('[data-nav-target]').forEach(button=>button.addEventListener('click',()=>{
   if(button.disabled)return;
-  const target=$(button.dataset.navTarget);if(!target||target.hidden)return;
+  const target=$(button.dataset.navTarget);if(!target)return;
+  if(button.id==='navConfig')target.hidden=false;
+  else $('configPanel').hidden=true;
+  if(target.hidden)return;
   document.querySelectorAll('[data-nav-target]').forEach(x=>x.classList.toggle('active',x===button));
   target.scrollIntoView({behavior:'smooth',block:'start'});
 }));
@@ -189,6 +193,7 @@ $('analyzeBtn').addEventListener('click',async()=>{
     if(!analysis.intelligence)throw new Error('The model response has no intelligence section.');
     renderResults();$('resultsPanel').hidden=false;syncNavigation();status('llm','done','Live LLM response received');status('qa','done','QA-ready JSON available for download');
     completeCount++;$('completedCount').textContent=String(completeCount);notice('Analysis completed using the real LLM. Download the QA handoff JSON.');
+    await autoSaveConfiguredOutput();
     $('resultsPanel').scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){
     steps(2);status('llm','bad',e.httpStatus?'HTTP '+e.httpStatus+' · '+(e.errorCode||'PROCESSING_FAILED'):'Analysis failed');
@@ -225,4 +230,95 @@ function download(content,type,suffix){
 }
 $('downloadJson').addEventListener('click',()=>{try{download(JSON.stringify(exportPackage(),null,2),'application/json','QA_handoff.json');notice('QA JSON exported. The QA service has not been called.');}catch(e){notice(e.message,'error');}});
 $('downloadText').addEventListener('click',()=>{try{const pkg=exportPackage(),lines=pkg.transcript.segments.map(s=>`[${clock(s.startMs)} – ${clock(s.endMs)}] ${s.speaker}: ${s.text}`);download(['MAFer Audio Intelligence · Verified timestamped transcript','Conversation ID: '+(pkg.metadata.conversationId||'Not supplied'),'Agent: '+(pkg.metadata.agentName||'Not supplied'),'','' ,...lines].join('\n'),'text/plain;charset=utf-8','transcript.txt');notice('Transcript downloaded.');}catch(e){notice(e.message,'error');}});
+
+// Local HDD configuration and evidence export. No secrets or customer audio are kept in localStorage.
+const SETTINGS_KEY='mafer-poc-storage-settings-v1';
+let localEntries=[];
+function configMessage(message,error=false){
+  const node=$('configurationStatus');node.textContent=message;node.style.color=error?'#ba5964':'';
+}
+function configValues(){return {input:$('configInputType').value,output:$('configOutputType').value};}
+async function refreshFolderLabels(){
+  for(const key of ['input','output']){
+    const h=await getFolder(key);
+    $(key+'FolderStatus').textContent=h?'Selected: '+h.name+' (permission verified when accessed)':'No '+key+' folder selected.';
+  }
+}
+function loadPOCConfiguration(){
+  try{
+    const c=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}');
+    if(['manual','local'].includes(c.input))$('configInputType').value=c.input;
+    if(['download','local'].includes(c.output))$('configOutputType').value=c.output;
+  }catch{}
+  if(!localFoldersSupported()){
+    for(const id of ['selectInputFolder','scanInputFolder','loadLocalFile','selectOutputFolder','testOutputFolder'])$(id).disabled=true;
+    configMessage('Local folder access needs Edge/Chrome on HTTPS or localhost; manual uploads remain available.');
+  }
+  refreshFolderLabels().catch(()=>{});
+}
+$('saveConfiguration').addEventListener('click',()=>{
+  localStorage.setItem(SETTINGS_KEY,JSON.stringify(configValues()));
+  configMessage('POC input/output settings saved in this browser. Provider credentials remain backend-managed.');
+});
+$('selectInputFolder').addEventListener('click',async()=>{
+  try{await selectFolder('input');await refreshFolderLabels();configMessage('Input folder selected. Click Scan for audio.');}
+  catch(e){configMessage('Input selection failed: '+e.message,true);}
+});
+$('scanInputFolder').addEventListener('click',async()=>{
+  try{
+    const r=await listAudioFiles();localEntries=r.files;
+    const sel=$('localAudioFile');sel.replaceChildren(new Option('Choose a recording ('+localEntries.length+' found)',''));
+    localEntries.forEach((x,i)=>sel.add(new Option(x.relative,String(i))));
+    $('inputFolderStatus').textContent='Read access verified: '+r.folderName+' · '+localEntries.length+' recording(s)'+(r.limited?' (first 250 only)':'');
+    configMessage('Select a recording then click Load recording.');
+  }catch(e){configMessage('Input scan failed: '+e.message,true);}
+});
+$('loadLocalFile').addEventListener('click',async()=>{
+  try{
+    if(busy)throw Error('Another recording is being processed.');
+    const value=$('localAudioFile').value,index=Number(value);
+    if(value===''||!localEntries[index])throw Error('Choose a recording from the list.');
+    const selected=await localEntries[index].handle.getFile();
+    if(selected.size>MAX)throw Error('The existing POC limit is 24 MB; select a smaller recording.');
+    pick(selected);
+    $('configPanel').hidden=true;
+    document.querySelectorAll('[data-nav-target]').forEach(b=>b.classList.toggle('active',b.id==='navUpload'));
+    $('uploadPanel').scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){configMessage('Load recording failed: '+e.message,true);}
+});
+$('selectOutputFolder').addEventListener('click',async()=>{
+  try{await selectFolder('output');await refreshFolderLabels();configMessage('Output folder selected. Test access to verify write permissions.');}
+  catch(e){configMessage('Output selection failed: '+e.message,true);}
+});
+$('testOutputFolder').addEventListener('click',async()=>{
+  try{const r=await testLocalFolder('output');$('outputFolderStatus').textContent=r.status+': '+r.name;configMessage('Output folder read/write check passed.');}
+  catch(e){configMessage('Output test failed: '+e.message,true);}
+});
+$('testConfiguration').addEventListener('click',async()=>{
+  try{
+    const response=await fetch('/api/health',{cache:'no-store'});
+    const data=await response.json();
+    if(!response.ok||!data.ok)throw Error('Backend returned HTTP '+response.status);
+    $('configSpeechModel').value=data.transcriptionModel||'Not reported';
+    $('configAnalysisModel').value=data.analysisModel||'Not reported';
+    if(['gemini','openai','amazon'].includes(data.transcriptionProvider))$('configSpeechProvider').value=data.transcriptionProvider;
+    if(['gemini','openai'].includes(data.analysisProvider))$('configAnalysisProvider').value=data.analysisProvider;
+    configMessage('Backend checked: '+(data.engineConfigured?'provider keys configured':'provider keys missing')+
+      '; '+(data.rateLimitConfigured?'rate limiter configured':'rate limiter missing')+
+      '. Provider connectivity requires a real processing request.');
+  }catch(e){configMessage('Backend health check failed: '+e.message,true);}
+});
+async function autoSaveConfiguredOutput(){
+  if($('configOutputType').value!=='local')return;
+  try{
+    const result=await saveToLocalFolder(exportPackage());
+    notice('Analysis complete. Intelligence package saved to '+result.path);
+    status('qa','done','Local output written');
+  }catch(e){
+    notice('Analysis complete but local output save failed: '+e.message+'. JSON download is still available.','error');
+    status('qa','bad','Local output save failed');
+  }
+}
+loadPOCConfiguration();
+
 health();

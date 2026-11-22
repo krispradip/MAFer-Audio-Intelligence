@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#111e37"><title>MAFer Audio Intelligence · Live Analyzer</title><link rel="stylesheet" href="./styles.css"></head>
 <body><div class="shell">
-<aside class="sidebar"><div class="brand"><div class="brand-mark"><span>◉</span></div><div><strong>MAFer<span>Audio</span></strong><small>INTELLIGENCE</small></div></div><div class="nav-label">WORKSPACE</div><button type="button" class="side-link active" id="navUpload" data-nav-target="uploadPanel"><span>◈</span> Live Audio Analyzer</button><button type="button" class="side-link" id="navTranscript" data-nav-target="transcriptionPanel" disabled aria-label="Transcript & Evidence, available after successful transcription"><span>≡</span> Transcript & Evidence</button><button type="button" class="side-link" id="navQA" data-nav-target="handoffPanel" disabled aria-label="QA Handoff, available after completed AI analysis"><span>⇩</span> QA Handoff</button><div class="sidebar-bottom"><div class="side-box"><div class="indicator"></div><b>Real model processing</b><p>No sample interactions. No fabricated results.</p></div><small>STANDALONE SERVICE<br>QA scoring remains in QA.MAFer.AI</small></div></aside>
+<aside class="sidebar"><div class="brand"><div class="brand-mark"><span>◉</span></div><div><strong>MAFer<span>Audio</span></strong><small>INTELLIGENCE</small></div></div><div class="nav-label">WORKSPACE</div><button type="button" class="side-link active" id="navUpload" data-nav-target="uploadPanel"><span>◈</span> Live Audio Analyzer</button><button type="button" class="side-link" id="navTranscript" data-nav-target="transcriptionPanel" disabled aria-label="Transcript & Evidence, available after successful transcription"><span>≡</span> Transcript & Evidence</button><button type="button" class="side-link" id="navQA" data-nav-target="handoffPanel" disabled aria-label="QA Handoff, available after completed AI analysis"><span>⇩</span> QA Handoff</button><button type="button" class="side-link" id="navConfig" data-nav-target="configPanel"><span>⚙</span> Configuration</button><div class="sidebar-bottom"><div class="side-box"><div class="indicator"></div><b>Real model processing</b><p>No sample interactions. No fabricated results.</p></div><small>STANDALONE SERVICE<br>QA scoring remains in QA.MAFer.AI</small></div></aside>
 <div class="workspace"><header class="topbar"><div><span class="breadcrumb">MAFer Audio Intelligence</span><span class="slash">/</span><b>Live Analyzer</b></div><div class="topright"><span id="engineStatus" class="engine-state">Checking service…</span><span class="release">LIVE MVP</span></div></header>
 <main>
 <div class="hero"><div><div class="eyebrow">AUDIO → INTELLIGENCE → QA HANDOFF</div><h1>Audio Intelligence Workbench</h1><p>Upload a real recording, transcribe with speaker timestamps, confirm who is speaking and run AI interaction analysis. Nothing is simulated.</p></div><div class="hero-badge"><b id="completedCount">0</b><small>Interactions processed<br>this session</small></div></div>
@@ -19,6 +19,57 @@
 <label>Market<select id="market"><option value="UAE">UAE</option><option value="KSA">KSA</option><option value="Oman">Oman</option><option value="Bahrain">Bahrain</option><option value="Other">Other</option></select><small class="field-source" id="marketSource">Preset: UAE · confirm</small></label>
 <label>Spoken language<select id="language"><option value="auto">Auto-detect / bilingual</option><option value="en">English</option><option value="ar">Arabic</option></select><small class="field-source" id="languageSource">Auto-detect on transcription</small></label>
 </div><div class="buttons"><button id="transcribeBtn" class="button primary" disabled><span>✦</span> Transcribe audio</button><button id="clearBtn" class="button text-btn">Clear & start again</button></div></div></section>
+
+<section id="configPanel" class="panel config-panel" hidden>
+  <div class="panel-title"><div><span class="section-num">CONFIGURATION</span><h2>Sources, destinations & processing</h2></div><span class="pill blue">POC</span></div>
+  <div class="panel-body">
+    <p class="helper">Select where recordings come from and where completed intelligence is saved. Manual upload remains available. Folder access stays in your browser and is only granted when you select a folder.</p>
+    <div class="config-grid">
+      <div class="config-group">
+        <h3>1. Input source</h3>
+        <label>Source type
+          <select id="configInputType">
+            <option value="manual">Manual upload</option>
+            <option value="local">Local HDD folder</option>
+            <option value="s3" disabled>S3 bucket (corporate adapter pending)</option>
+          </select>
+        </label>
+        <div class="buttons"><button type="button" class="button outline" id="selectInputFolder">Select input folder</button><button type="button" class="button outline" id="scanInputFolder">Scan for audio</button></div>
+        <p class="helper" id="inputFolderStatus">No input folder selected.</p>
+        <label>Audio file in selected folder<select id="localAudioFile"><option value="">Scan folder to list recordings</option></select></label>
+        <button type="button" class="button outline" id="loadLocalFile">Load recording for transcription</button>
+      </div>
+      <div class="config-group">
+        <h3>2. Output destination</h3>
+        <label>Output type
+          <select id="configOutputType">
+            <option value="download">Browser downloads</option>
+            <option value="local">Local HDD folder</option>
+            <option value="s3" disabled>S3 bucket (corporate adapter pending)</option>
+          </select>
+        </label>
+        <div class="buttons"><button type="button" class="button outline" id="selectOutputFolder">Select output folder</button><button type="button" class="button outline" id="testOutputFolder">Test output access</button></div>
+        <p class="helper" id="outputFolderStatus">No output folder selected.</p>
+        <p class="tiny">Local output uses <code>03_Completed / BU / Brand / Market / Year / Month / Day / Interaction ID</code>. The same relative folder layout will be used for S3.</p>
+      </div>
+      <div class="config-group">
+        <h3>3. Speech transcription</h3>
+        <label>Provider<select id="configSpeechProvider"><option value="gemini">Gemini (personal POC)</option><option value="amazon" disabled>Amazon Transcribe (corporate adapter pending)</option><option value="openai" disabled>OpenAI (requires backend configuration)</option></select></label>
+        <label>Active model<input id="configSpeechModel" readonly placeholder="Read from backend health"/></label>
+        <p class="helper">The deployed backend chooses the active speech adapter. This screen never exposes provider credentials.</p>
+      </div>
+      <div class="config-group">
+        <h3>4. AI intelligence extraction</h3>
+        <label>Provider<select id="configAnalysisProvider"><option value="gemini">Gemini (personal POC)</option><option value="openai" disabled>OpenAI / corporate APIM (adapter required)</option></select></label>
+        <label>Active model<input id="configAnalysisModel" readonly placeholder="Read from backend health"/></label>
+        <p class="helper">Model endpoints and secrets must be managed by the secure backend. Editable connection profiles will become available with the corporate credential store.</p>
+      </div>
+    </div>
+    <div class="buttons"><button type="button" class="button primary" id="saveConfiguration">Save POC settings</button><button type="button" class="button outline" id="testConfiguration">Check backend health</button></div>
+    <p class="helper" id="configurationStatus" role="status">No connection test performed.</p>
+  </div>
+</section>
+
 <section id="transcriptionPanel" class="panel" hidden><div class="panel-title"><div><span class="section-num">02 / TRANSCRIPT</span><h2>Verify speaker roles</h2></div><span class="pill green">Timestamped speech</span></div><div class="panel-body"><p class="helper">Speaker labels are detected from audio. Assign each one to Agent, Customer or Other before the AI analyzes the conversation.</p><div id="speakerMap" class="speaker-grid"></div><div class="buttons"><button id="analyzeBtn" class="button primary" disabled><span>✦</span> Analyze interaction with AI</button><span id="speakerHint" class="helper"></span></div><div class="mini-head"><h3>Full transcript</h3><b id="segmentCount"></b></div><div id="transcript" class="transcript"></div></div></section>
 <section id="resultsPanel" class="panel" hidden><div class="panel-title"><div><span class="section-num">03 / INTELLIGENCE</span><h2>Interaction intelligence</h2></div><span class="pill green">LLM analyzed</span></div><div class="panel-body"><div class="result-top"><div class="result-stat"><small>Closing sentiment</small><strong id="sentiment">—</strong></div><div class="result-stat"><small>Resolution status</small><strong id="resolutionStatus">—</strong></div><div class="result-stat"><small>Issues identified</small><strong id="issueCount">—</strong></div></div><div id="results" class="results"></div><div class="handoff" id="handoffPanel"><div><b>Ready for QA.MAFer.AI</b><p>Export timestamped original-language dialogue, confirmed speaker roles, interaction references and AI evidence in JSON. No QA score is generated here.</p></div><div class="buttons"><button id="downloadJson" class="button primary">↓ QA JSON</button><button id="downloadText" class="button outline">↓ Transcript TXT</button></div></div></div></section>
 </div>
