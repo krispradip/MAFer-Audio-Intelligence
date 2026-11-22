@@ -24,3 +24,41 @@
 .config-group code { overflow-wrap:anywhere; }
 .config-panel .helper { line-height:1.5; overflow-wrap:anywhere; }
 @media (max-width: 900px) { .config-grid { grid-template-columns:1fr; } }
+
+
+/* 2026-11-22: Mobile nav must remain accessible. Previous mobile rule hid
+   every sidebar action, including the Configuration Console. */
+@media (max-width:780px) {
+  .sidebar {
+    display:flex;
+    flex-direction:row;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:8px;
+    height:auto;
+    position:relative;
+    padding:13px 14px;
+  }
+  .sidebar .brand {
+    flex:0 0 100%;
+    margin:0 0 3px;
+  }
+  .sidebar .nav-label,.sidebar .sidebar-bottom { display:none; }
+  .sidebar .side-link[type="button"] {
+    display:inline-flex;
+    width:auto;
+    flex:1 1 auto;
+    min-height:42px;
+    padding:9px 12px;
+    border:1px solid #40516d;
+    border-radius:9px;
+    font-size:12px;
+    justify-content:center;
+    white-space:normal;
+  }
+  .sidebar .side-link[type="button"].active {
+    border-color:#57dad8;
+    box-shadow:inset 0 -2px #57dad8;
+  }
+  .sidebar .side-link span { font-size:15px; }
+}
