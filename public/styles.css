@@ -9,3 +9,18 @@
 .fields label .field-source{display:block;font-size:10px;font-weight:500;color:#768ea9;line-height:1.35;margin-top:-2px}
 .fields label .field-source.verified{color:#087d63}
 @media(max-width:780px){.metadata-import{flex-direction:column;align-items:stretch}.metadata-import .button{width:100%}}
+
+
+/* POC Configuration Console — follows the existing visual system. */
+.config-panel .panel-body { padding-bottom: 28px; }
+.config-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:16px 0 20px; }
+.config-group { border:1px solid var(--border,#dfe5ef); border-radius:14px; padding:18px; min-width:0; background:rgba(120,140,165,.035); }
+.config-group h3 { margin:0 0 14px; font-size:16px; }
+.config-group label { display:block; margin:10px 0; font-size:13px; font-weight:600; }
+.config-group select,.config-group input { display:block; width:100%; box-sizing:border-box; margin-top:7px; padding:10px; border:1px solid #cfd6e3; border-radius:8px; background:var(--surface,#fff); color:inherit; font:inherit; }
+.config-group input[readonly] { opacity:.76; }
+.config-group .buttons { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.config-group .buttons button { flex:1 1 150px; }
+.config-group code { overflow-wrap:anywhere; }
+.config-panel .helper { line-height:1.5; overflow-wrap:anywhere; }
+@media (max-width: 900px) { .config-grid { grid-template-columns:1fr; } }
