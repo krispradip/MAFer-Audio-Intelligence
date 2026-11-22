@@ -1,5 +1,6 @@
 // Actual audio and model responses only. No seeded interactions or fake success statuses.
 import {conversationIdFromFilename,metadataFromJson} from './metadata.js';
+import {localFoldersSupported,selectFolder,getFolder,listAudioFiles,testLocalFolder,saveToLocalFolder} from './local-folders.js';
 const $ = id => document.getElementById(id);
 const safe = x => String(x??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clock=ms=>{const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);return (h?String(h).padStart(2,'0')+':':'')+String(m%60).padStart(2,'0')+':'+String(s%60).padStart(2,'0')+'.'+String(ms%1000).padStart(3,'0');};
@@ -19,7 +20,10 @@ function syncNavigation(){
 }
 document.querySelectorAll('[data-nav-target]').forEach(button=>button.addEventListener('click',()=>{
   if(button.disabled)return;
-  const target=$(button.dataset.navTarget);if(!target||target.hidden)return;
+  const target=$(button.dataset.navTarget);if(!target)return;
+  if(button.id==='navConfig')target.hidden=false;
+  else $('configPanel').hidden=true;
+  if(target.hidden)return;
   document.querySelectorAll('[data-nav-target]').forEach(x=>x.classList.toggle('active',x===button));
   target.scrollIntoView({behavior:'smooth',block:'start'});
 }));
@@ -189,6 +193,7 @@ $('analyzeBtn').addEventListener('click',async()=>{
     if(!analysis.intelligence)throw new Error('The model response has no intelligence section.');
     renderResults();$('resultsPanel').hidden=false;syncNavigation();status('llm','done','Live LLM response received');status('qa','done','QA-ready JSON available for download');
     completeCount++;$('completedCount').textContent=String(completeCount);notice('Analysis completed using the real LLM. Download the QA handoff JSON.');
+    await autoSaveConfiguredOutput();
     $('resultsPanel').scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){
     steps(2);status('llm','bad',e.httpStatus?'HTTP '+e.httpStatus+' · '+(e.errorCode||'PROCESSING_FAILED'):'Analysis failed');
