@@ -84,7 +84,7 @@ Google references:
 
 ## Local HDD POC — input, output and provider configuration
 
-On the \`feature/universal-io-provider-config\` branch, the live UI adds **Configuration** to the sidebar. This is an incremental POC change. Existing manual audio upload, Gemini transcription, speaker-role confirmation, transcript JSON export, and AI analysis remain intact.
+On the `feature/universal-io-provider-config` branch, the live UI adds **Configuration** to the sidebar. This is an incremental POC change. Existing manual audio upload, Gemini transcription, speaker-role confirmation, transcript JSON export, and AI analysis remain intact.
 
 1. Open the application in **Microsoft Edge or Chrome over HTTPS or localhost**.
 2. Select **Configuration → Input source → Local HDD folder**, then **Select input folder**. Grant permission, click **Scan for audio**, choose a recording and **Load recording**. The existing size limit remains 24 MB.
@@ -98,7 +98,7 @@ Folder permissions are granted explicitly by the user. Browser directory handles
 
 The folder writer produces:
 
-\`\`\`text
+```text
 03_Completed/BU/Brand/Market/YYYY/MM/DD/GenesysConversationID/run-.../
   Full_Transcript/transcript.json
   Full_Transcript/transcript.txt
@@ -108,16 +108,16 @@ The folder writer produces:
   Machine_Data/acoustic_evidence.json
   Machine_Data/evidence_provenance.json
   manifest.json
-\`\`\`
+```
 
 Every run receives a unique run directory, so earlier outputs are preserved. The manifest is written last. The **same relative layout is the target for the future S3 adapter**, which is not yet implemented. S3 and Amazon Transcribe choices are visible but disabled to avoid reporting nonexistent connectivity.
 
 ### What is really implemented
 
 - Actual backend Gemini provider remains active where configured.
-- The Configuration Console displays the deployed provider and model from \`/api/health\`. It does **not** change runtime endpoints, secrets or models; such edits require an authenticated backend configuration service.
+- The Configuration Console displays the deployed provider and model from `/api/health`. It does **not** change runtime endpoints, secrets or models; such edits require an authenticated backend configuration service.
 - Local output contains the existing evidence-backed interaction intelligence. The expanded universal catalogue and physical audio-acoustic analyzer remain future work.
-- \`acoustic_evidence.json\` explicitly records \`NOT_PROCESSED\` rather than fabricating silence, pitch, emotion or interruption measurements.
+- `acoustic_evidence.json` explicitly records `NOT_PROCESSED` rather than fabricating silence, pitch, emotion or interruption measurements.
 - No direct QA scoring or ingestion is attempted, and local output is never claimed to be S3-published.
 - The POC has no real user authentication. **Do not use customer-sensitive recordings or corporate credentials on the public personal Cloudflare Worker.**
 - The repository commit does not prove Cloudflare deployed these changes. Validate the branch in a secure preview or local Wrangler instance first.
