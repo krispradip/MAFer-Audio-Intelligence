@@ -258,7 +258,7 @@ function loadPOCConfiguration(){
 }
 $('saveConfiguration').addEventListener('click',()=>{
   localStorage.setItem(SETTINGS_KEY,JSON.stringify(configValues()));
-  configMessage('POC input/output settings saved in this browser. Provider credentials remain backend-managed.');
+  configMessage('Input/output settings saved in this browser. Provider credentials remain securely managed by the backend.');
 });
 $('selectInputFolder').addEventListener('click',async()=>{
   try{await selectFolder('input');await refreshFolderLabels();configMessage('Input folder selected. Click Scan for audio.');}
@@ -279,7 +279,7 @@ $('loadLocalFile').addEventListener('click',async()=>{
     const value=$('localAudioFile').value,index=Number(value);
     if(value===''||!localEntries[index])throw Error('Choose a recording from the list.');
     const selected=await localEntries[index].handle.getFile();
-    if(selected.size>MAX)throw Error('The existing POC limit is 24 MB; select a smaller recording.');
+    if(selected.size>MAX)throw Error('The current upload limit is 24 MB; select a smaller recording.');
     pick(selected);
     $('configPanel').hidden=true;
     document.querySelectorAll('[data-nav-target]').forEach(b=>b.classList.toggle('active',b.id==='navUpload'));
