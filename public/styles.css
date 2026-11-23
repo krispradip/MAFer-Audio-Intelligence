@@ -114,3 +114,37 @@
   .app-page { min-height:55vh; }
   .page-heading h1 { font-size:23px; }
 }
+
+
+/* Explicit, stage-based processing progress (not an estimated time or invented percentage). */
+.processing-ribbon{max-width:1300px;margin:0 auto 18px;background:#fff;border:1px solid #dbe6f4;border-radius:14px;padding:15px 20px;box-shadow:var(--shadow)}
+.processing-ribbon-heading,.processing-ribbon-bottom{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.processing-ribbon-heading strong{font-size:14px;color:var(--ink)}
+.processing-ribbon-heading span{font-size:11px;font-weight:800;color:#4779c8}
+.processing-ribbon-bottom{font-size:11px;color:#7b8ba4;line-height:1.5}
+.processing-ribbon-bottom #progressDetail{overflow-wrap:anywhere;min-width:0}
+.processing-ribbon-bottom #progressCount{white-space:nowrap}
+.processing-ribbon progress{display:block;width:100%;height:10px;margin:11px 0;border:0;border-radius:10px;overflow:hidden;accent-color:#2e74e7;background:#e7eef7}
+.processing-ribbon progress::-webkit-progress-bar{background:#e7eef7;border-radius:10px}
+.processing-ribbon progress::-webkit-progress-value{background:#2e74e7;border-radius:10px;transition:width .2s}
+.processing-ribbon.progress-error{border-color:#d9929b;background:#fff9f9}
+.processing-ribbon.progress-error .processing-ribbon-heading span{color:#af4456}
+.queue-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:15px}
+.queue-stats>div{border:1px solid #e4ebf4;border-radius:12px;padding:14px;background:#f9fbff}
+.queue-stats small{display:block;font-size:11px;color:#7b8ba4}
+.queue-stats strong{display:block;font-size:24px;color:var(--ink)}
+.queue-panel .panel-title h2{font-size:17px}
+.queue-panel .tiny{margin:4px 0 0}
+.queue-item{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #edf1f7;padding:10px 0;overflow-wrap:anywhere}
+.queue-item span{min-width:0}
+.queue-item small{white-space:nowrap;color:#7390b1}
+@media(max-width:780px){
+ .processing-ribbon{margin:0 0 15px;padding:13px}
+ .processing-ribbon-heading strong{font-size:13px}
+ .processing-ribbon-bottom{align-items:flex-start}
+ .processing-ribbon-bottom #progressCount{font-size:10px}
+ .queue-stats{gap:8px}
+ .queue-stats>div{padding:10px}
+ .queue-stats strong{font-size:20px}
+ .queue-item{font-size:11px}
+}
