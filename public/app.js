@@ -14,7 +14,7 @@ function steps(active){document.querySelectorAll('[data-step]').forEach(el=>{con
 
 function syncNavigation(){
   const transcriptReady=!!transcription&&Array.isArray(transcription.segments)&&transcription.segments.length>0;
-  const handoffReady=transcriptReady&&!!analysis&&roleReady();
+  const handoffReady=transcriptReady&&!!analysis?.intelligence&&!$('resultsPanel').hidden&&roleReady();
   $('transcriptEmpty').hidden=transcriptReady;
   $('qaEmpty').hidden=handoffReady;
   // Routes are always navigable. A view with no completed data shows its
