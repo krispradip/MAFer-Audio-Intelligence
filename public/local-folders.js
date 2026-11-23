@@ -43,7 +43,7 @@ export async function listAudioFiles(){
     for await(const item of folder.values()){
       if(found.length>=250)return;
       if(item.kind==='file'&&AUDIO.test(item.name))
-        found.push({name:item.name,relative:prefix+item.name,handle:item});
+        found.push({name:item.name,relative:prefix+item.name,handle:item,parentHandle:folder});
       if(item.kind==='directory'&&depth<2&&!['03_Completed','node_modules','.git'].includes(item.name))
         await walk(item,prefix+item.name+'/',depth+1);
     }
@@ -52,6 +52,27 @@ export async function listAudioFiles(){
   found.sort((a,b)=>a.relative.localeCompare(b.relative));
   return {folderName:root.name,files:found,limited:found.length>=250};
 }
+
+/** Optional sidecar record for BU/agent metadata, never guessed from audio. */
+export async function readMetadataSidecar(entry){
+  if(!entry?.parentHandle||!entry.name)return null;
+  const base=entry.name.replace(/\.[^.]+$/,'');
+  for(const name of [base+'.metadata.json',base+'.json',entry.name+'.json']){
+    try{
+      const handle=await entry.parentHandle.getFileHandle(name);
+      const f=await handle.getFile();
+      if(f.size>256*1024)continue;
+      const data=JSON.parse(await f.text());
+      if(data&&typeof data==='object'&&!Array.isArray(data))return data;
+    }catch(e){
+      if(e?.name==='NotFoundError')continue;
+      // Invalid JSON and permission errors are visible via the operations console.
+      throw new Error('Failed to read metadata sidecar '+name+': '+e.message);
+    }
+  }
+  return null;
+}
+
 async function verifyOutputWrite(handle){
   const name='.mafer-permission-check-'+crypto.randomUUID().slice(0,8);
   try{
@@ -123,7 +144,7 @@ export async function saveToLocalFolder(pkg){
     schemaVersion:'1.0',producer:'MAFer Audio Intelligence',createdAt:date.toISOString(),
     status:'COMPLETE',qaScoringPerformed:false,conversationId:pkg.metadata.conversationId||null,
     bu:pkg.metadata.bu||null,agentName:pkg.metadata.agentName||null,brand:pkg.metadata.brand||null,
-    market:pkg.metadata.market||null,source:'manual_or_local_folder_poc',
+    market:pkg.metadata.market||null,source:'manual_or_local_folder_poc',speakerRoleSource:pkg.speakerRoleSource||'not_verified',speakerRolesVerified:pkg.speakerRolesVerified===true,
     stages:{transcription:'completed',intelligence:'completed',acoustic:'NOT_PROCESSED',crmUpdate:'NOT_CONNECTED'},
     files:artifacts.map(a=>a.path.join('/')),outputPrefix:prefix.join('/')
   };
