@@ -1,5 +1,6 @@
 // Actual audio and model responses only. No seeded interactions or fake success statuses.
 import {conversationIdFromFilename,metadataFromJson} from './metadata.js';
+import {initWorkspaceNavigation} from './navigation.js';
 import {localFoldersSupported,selectFolder,getFolder,listAudioFiles,testLocalFolder,saveToLocalFolder} from './local-folders.js';
 const $ = id => document.getElementById(id);
 const safe = x => String(x??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,23 +11,15 @@ const status=(key,value,detail)=>{const dot=$(key+'Dot');if(dot)dot.className='s
 function notice(message,kind='success'){$('message').hidden=false;$('message').className='message '+(kind==='success'?'':kind);$('message').textContent=message;}
 function clearNotice(){$('message').hidden=true;$('message').textContent='';}
 function steps(active){document.querySelectorAll('[data-step]').forEach(el=>{const idx=Number(el.dataset.step);el.classList.toggle('active',idx===active);el.classList.toggle('done',idx<active);});}
+const navigation=initWorkspaceNavigation();
 function syncNavigation(){
   const transcriptReady=!!transcription&&Array.isArray(transcription.segments)&&transcription.segments.length>0;
-  const handoffReady=transcriptReady&&!!analysis&&roleReady();
+  const intelligenceReady=transcriptReady&&!!analysis&&roleReady();
   $('navTranscript').disabled=!transcriptReady;
-  $('navQA').disabled=!handoffReady;
-  const current=document.querySelector('.side-link.active');
-  if(current?.disabled){current.classList.remove('active');$('navUpload').classList.add('active');}
+  $('navIntelligence').disabled=!intelligenceReady;
+  $('navQA').disabled=!intelligenceReady;
+  navigation.ensureValidRoute();
 }
-document.querySelectorAll('[data-nav-target]').forEach(button=>button.addEventListener('click',()=>{
-  if(button.disabled)return;
-  const target=$(button.dataset.navTarget);if(!target)return;
-  if(button.id==='navConfig')target.hidden=false;
-  else $('configPanel').hidden=true;
-  if(target.hidden)return;
-  document.querySelectorAll('[data-nav-target]').forEach(x=>x.classList.toggle('active',x===button));
-  target.scrollIntoView({behavior:'smooth',block:'start'});
-}));
 const metadataIds=['conversationId','agentName','bu','brand','market','language'];
 function setOrigin(id,description,imported=false){
   const node=$(id+'Source');
@@ -81,6 +74,9 @@ $('metadataFile').addEventListener('change',async event=>{
 });
 function reset(full=true){
   if(localUrl) URL.revokeObjectURL(localUrl);localUrl=null;file=null;transcription=null;analysis=null;roles={};durationMs=null;
+  for(const id of ['transcriptPlayer','evidencePlayer']){
+    const audio=$(id);audio.hidden=true;audio.pause();audio.removeAttribute('src');audio.load();
+  }
   $('audioFile').value='';$('player').hidden=true;$('player').removeAttribute('src');$('player').load();
   $('dropTitle').textContent='Choose an audio recording';$('dropDesc').textContent='MP3, WAV, M4A, MP4, FLAC, OGG or WebM · maximum 24 MB';
   $('transcribeBtn').disabled=true;$('transcriptionPanel').hidden=true;$('resultsPanel').hidden=true;$('analyzeBtn').disabled=true;$('speakerMap').replaceChildren();
@@ -96,6 +92,7 @@ function pick(next){
   if(!next||!['mp3','wav','m4a','aac','flac','ogg','webm','mp4','mpeg','mpga'].includes(ext))return notice('Select a supported audio file.','error');
   if(next.size<1||next.size>MAX)return notice('Recording must be nonempty and no larger than 24 MB.','error');
   reset(false);file=next;localUrl=URL.createObjectURL(next);$('player').src=localUrl;$('player').hidden=false;
+  for(const id of ['transcriptPlayer','evidencePlayer']){$(id).src=localUrl;$(id).hidden=true;}
   const detectedId=conversationIdFromFilename(next.name);
   if(detectedId){
     $('conversationId').value=detectedId;
@@ -160,7 +157,8 @@ $('transcribeBtn').addEventListener('click',async()=>{
     $('segmentCount').textContent=res.segments.length+' segments';
     status('stt','done',res.segments.length+' timestamped segments produced');status('roles','busy','Assign speaker roles to continue');
     notice('Actual audio transcription completed. Confirm agent and customer speakers before analysis.');
-    $('transcriptionPanel').scrollIntoView({behavior:'smooth',block:'start'});
+    $('transcriptPlayer').hidden=false;
+    navigation.navigate('transcript');
   }catch(e){
     const marker=e.httpStatus?'HTTP '+e.httpStatus+' · '+(e.errorCode||'PROCESSING_FAILED')+' · '+(e.errorStage||'unknown'):'Transcription request failed';
     status('stt','bad',marker);steps(1);
@@ -194,7 +192,8 @@ $('analyzeBtn').addEventListener('click',async()=>{
     renderResults();$('resultsPanel').hidden=false;syncNavigation();status('llm','done','Live LLM response received');status('qa','done','QA-ready JSON available for download');
     completeCount++;$('completedCount').textContent=String(completeCount);notice('Analysis completed using the real LLM. Download the QA handoff JSON.');
     await autoSaveConfiguredOutput();
-    $('resultsPanel').scrollIntoView({behavior:'smooth',block:'start'});
+    $('evidencePlayer').hidden=false;
+    navigation.navigate('intelligence');
   }catch(e){
     steps(2);status('llm','bad',e.httpStatus?'HTTP '+e.httpStatus+' · '+(e.errorCode||'PROCESSING_FAILED'):'Analysis failed');
     notice('AI analysis failed: '+e.message,'error');
@@ -214,7 +213,7 @@ function renderResults(){
   const sections=[['Issues raised',v.issues],['Actions stated',v.actions],['Promises & commitments',v.commitments],['Next steps',v.nextSteps],['Emotional indicators based on words',em],['Explicit conversation signals',sig]];
   $('results').innerHTML=`<h3>CRM summary</h3><p>${safe(v.summary||'Unclear')}</p><h3>Reason for contact</h3><p>${safe(v.reasonForContact||'Unclear')}</p><h3>Resolution</h3><p>${safe(v.resolution?.description||'No confirmed resolution.')} ${evidence(v.resolution?.evidenceSegmentIndices)}</p><h3>Customer closing sentiment evidence</h3><p>${evidence(v.closingSentiment?.evidenceSegmentIndices)}</p>`+sections.map(([title,items])=>`<h3>${safe(title)}</h3>${facts(items)}`).join('');
 }
-$('results').addEventListener('click',e=>{const target=e.target.closest('[data-evidence]');if(!target||!file)return;const seg=transcription?.segments?.[Number(target.dataset.evidence)];if(seg){$('player').currentTime=seg.startMs/1000;$('player').play().catch(()=>{});$('player').scrollIntoView({behavior:'smooth',block:'center'});}});
+$('results').addEventListener('click',e=>{const target=e.target.closest('[data-evidence]');if(!target||!file)return;const seg=transcription?.segments?.[Number(target.dataset.evidence)];if(seg){const audio=$('evidencePlayer');audio.currentTime=seg.startMs/1000;audio.play().catch(()=>{});audio.scrollIntoView({behavior:'smooth',block:'center'});}});
 function exportPackage(){
   if(!analysis||!transcription||!roleReady())throw new Error('Finish real transcription and AI analysis first.');
   return {handoffSchemaVersion:'1.0',producer:'MAFer Audio Intelligence',destination:'QA.MAFer.AI',qaScoringPerformed:false,readyForQA:true,
@@ -281,9 +280,7 @@ $('loadLocalFile').addEventListener('click',async()=>{
     const selected=await localEntries[index].handle.getFile();
     if(selected.size>MAX)throw Error('The current upload limit is 24 MB; select a smaller recording.');
     pick(selected);
-    $('configPanel').hidden=true;
-    document.querySelectorAll('[data-nav-target]').forEach(b=>b.classList.toggle('active',b.id==='navUpload'));
-    $('uploadPanel').scrollIntoView({behavior:'smooth',block:'start'});
+    navigation.navigate('upload');
   }catch(e){configMessage('Load recording failed: '+e.message,true);}
 });
 $('selectOutputFolder').addEventListener('click',async()=>{
