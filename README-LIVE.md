@@ -125,3 +125,17 @@ Every run receives a unique run directory, so earlier outputs are preserved. The
 ### Future corporate mode
 
 The corporate version will use Amazon Transcribe for transcription, an approved AI analysis provider, and an S3 storage adapter with equivalent object-key paths. Corporate IAM, configuration persistence, audit, authorization and health tests are separate production integration work, not present in this POC.
+
+
+## Dedicated application navigation
+
+The interface now uses four separately navigable views, on desktop and mobile:
+
+- **Audio Analyzer** — recording upload, Genesys metadata and processing monitor (`#/analyzer`).
+- **Transcript & Evidence** — timestamped speaker transcript and audio playback (`#/transcript`).
+- **QA Handoff** — interaction intelligence, evidence playback and export (`#/handoff`).
+- **Configuration** — input/output locations, provider visibility and connection checks (`#/config`).
+
+Navigation switches the active view without reloading the application or discarding the current audio file, speaker choices, transcript or analysis. Back and forward navigation and direct hash links work. The transcript and QA pages show explanatory empty states until their processing stage is complete. On mobile, navigation stays visible as two rows of buttons rather than hiding the sidebar or stacking all functional sections together.
+
+The existing Gemini pipeline, manual upload, local folder support and export formats are unchanged; this is a presentation/navigation update only. When testing a freshly published Worker, confirm all four views and the processing transition between them.
