@@ -172,7 +172,7 @@ export async function geminiTranscribe(audio,requestedLanguage,env){
 export async function geminiAnalyze(verified,env,systemInstruction,normalize){
   if(!env.GEMINI_API_KEY)throw failure('GEMINI_API_KEY is not configured in Cloudflare.','NOT_CONFIGURED');
   const model=env.ANALYSIS_MODEL||'gemini-3.8-flash';
-  const userData={metadata:verified.metadata,speakerMapping:verified.speakerMapping,segments:verified.segments.map((s,index)=>({index,...s}))};
+  const userData={metadata:verified.metadata,speakerMapping:verified.speakerMapping,speakerMappingSource:verified.speakerMappingSource,segments:verified.segments.map((s,index)=>({index,...s}))};
   const result=await postJson(providerUrl(model),env.GEMINI_API_KEY,{
     systemInstruction:{parts:[{text:systemInstruction}]},contents:[{role:'user',parts:[{text:JSON.stringify(userData)}]}],
     generationConfig:{responseMimeType:'application/json',temperature:0,maxOutputTokens:8192}
