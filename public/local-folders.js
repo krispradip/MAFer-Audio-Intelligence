@@ -133,6 +133,7 @@ export async function saveToLocalFolder(pkg){
     {path:['CRM_Summary','summary.json'],data:summary},
     {path:['Machine_Data','interaction_metadata.json'],data:pkg.metadata},
     {path:['Machine_Data','universal_intelligence.json'],data:pkg.intelligence},
+    {path:['Machine_Data','timeline_metrics.json'],data:pkg.timelineMetrics||{status:'NOT_AVAILABLE'}},
     {path:['Machine_Data','acoustic_evidence.json'],data:{status:'NOT_PROCESSED',reason:'An audio-signal analyzer is not connected in this POC. No acoustic events were inferred from transcript alone.'}},
     {path:['Machine_Data','evidence_provenance.json'],data:{sourceFile:pkg.recording.originalFileName,source:'provider_timestamped_transcript',segments:evidence}}
   ];
