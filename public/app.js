@@ -1,6 +1,7 @@
 // Actual audio and model responses only. No seeded interactions or fake success statuses.
 import {conversationIdFromFilename,metadataFromJson} from './metadata.js';
 import {initWorkspaceNavigation} from './navigation.js';
+import {deriveTimelineMetrics} from './timeline-metrics.js';
 import {localFoldersSupported,selectFolder,getFolder,listAudioFiles,readMetadataSidecar,saveToLocalFolder} from './local-folders.js';
 const $ = id => document.getElementById(id);
 const safe = x => String(x??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -314,12 +315,16 @@ function evidence(indices){
 function facts(list){return Array.isArray(list)&&list.length?list.map(f=>`<div class="item"><p>${safe(f.description)} ${evidence(f.evidenceSegmentIndices)}</p></div>`).join(''):'<p class="helper">None explicitly supported by the transcript.</p>';}
 function renderResults(){
   const v=analysis.intelligence;
+  const metrics=deriveTimelineMetrics(transcription.segments,roles,durationMs);
   $('sentiment').textContent=v.closingSentiment?.value||'Unclear';$('resolutionStatus').textContent=v.resolution?.status||'Unclear';$('issueCount').textContent=String(v.issues?.length||0);
   const em=(v.emotionalIndicators||[]).map(f=>({description:f.kind+' ('+(roles[f.speakerId]||f.speakerId)+')',evidenceSegmentIndices:f.evidenceSegmentIndices}));
   const sig=(v.conversationSignals||[]).map(f=>({description:f.kind+': '+f.description,evidenceSegmentIndices:f.evidenceSegmentIndices}));
   const timeline=(v.sentimentTimeline||[]).map(f=>({description:f.value+' ('+(roles[f.speakerId]||f.speakerId)+')',evidenceSegmentIndices:f.evidenceSegmentIndices}));
+  const metricHtml='<h3>Timestamp-based conversation measurements (not acoustically verified)</h3>'+
+    '<p>Agent talk ratio: '+(metrics.speakerSpeechRatio?.agentPercent??'Unclear')+'% · Customer: '+(metrics.speakerSpeechRatio?.customerPercent??'Unclear')+
+    '% · Possible overlapping speech: '+(metrics.overlapCandidateTotalMs/1000).toFixed(1)+'s · Transcript speech gaps: '+(metrics.speechGapCandidateTotalMs/1000).toFixed(1)+'s. These are provisional interval calculations, not confirmed interruptions or dead air.</p>';
   const sections=[['Issues raised',v.issues],['Customer questions',v.customerQuestions],['Agent questions',v.agentQuestions],['Clarifications',v.clarifications],['Acknowledgements',v.acknowledgements],['Opening signals',v.openingSignals],['Empathy expressions',v.empathyExpressions],['Apologies',v.apologies],['Positive statements',v.positiveStatements],['Name mentions',v.nameMentions],['Products, services & location references',v.entityReferences],['Escalation requests',v.escalationRequests],['Actions stated',v.actions],['Promises & commitments',v.commitments],['Follow-up mentions',v.followupMentions],['Next steps',v.nextSteps],['Closing signals',v.closingSignals],['Sentiment timeline',timeline],['Emotional indicators based on words',em],['Explicit conversation signals',sig]];
-  $('results').innerHTML=`<h3>CRM summary</h3><p>${safe(v.summary||'Unclear')}</p><h3>Reason for contact</h3><p>${safe(v.reasonForContact||'Unclear')}</p><h3>Resolution</h3><p>${safe(v.resolution?.description||'No confirmed resolution.')} ${evidence(v.resolution?.evidenceSegmentIndices)}</p><h3>Customer closing sentiment evidence</h3><p>${evidence(v.closingSentiment?.evidenceSegmentIndices)}</p>`+sections.map(([title,items])=>`<h3>${safe(title)}</h3>${facts(items)}`).join('');
+  $('results').innerHTML=metricHtml+`<h3>CRM summary</h3><p>${safe(v.summary||'Unclear')}</p><h3>Reason for contact</h3><p>${safe(v.reasonForContact||'Unclear')}</p><h3>Resolution</h3><p>${safe(v.resolution?.description||'No confirmed resolution.')} ${evidence(v.resolution?.evidenceSegmentIndices)}</p><h3>Customer closing sentiment evidence</h3><p>${evidence(v.closingSentiment?.evidenceSegmentIndices)}</p>`+sections.map(([title,items])=>`<h3>${safe(title)}</h3>${facts(items)}`).join('');
 }
 $('results').addEventListener('click',e=>{const target=e.target.closest('[data-evidence]');if(!target||!file)return;const seg=transcription?.segments?.[Number(target.dataset.evidence)];if(seg){const audio=$('evidencePlayer');audio.currentTime=seg.startMs/1000;audio.play().catch(()=>{});audio.scrollIntoView({behavior:'smooth',block:'center'});}});
 function exportPackage(){
@@ -328,6 +333,7 @@ function exportPackage(){
     speakerRoleSource:roleSource,speakerRolesVerified:roleSource==='human_confirmed',
     recording:{originalFileName:file.name,fileSizeBytes:file.size,durationMs,uploadedAt:new Date().toISOString()},
     metadata:analysis.metadata,speakerMapping:{...roles},
+    timelineMetrics:deriveTimelineMetrics(transcription.segments,roles,durationMs),
     transcript:{transcriptSchemaVersion:'1.0',segments:transcription.segments.map(s=>({...s,speaker:roles[s.speakerId]})),language:transcription.language,source:'Real audio transcription',model:transcription.provider?.transcriptionModel},
     intelligence:{...analysis.intelligence,outputSchemaVersion:analysis.outputSchemaVersion,analysisSource:analysis.analysisSource,model:analysis.summaryModel,generatedAt:analysis.generatedAt},
     integration:{transport:'Manual JSON export',s3Published:false,crmUpdated:false,qaIngested:false}};
