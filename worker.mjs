@@ -1,4 +1,5 @@
-import {geminiTranscribe,geminiAnalyze} from './gemini-provider.mjs';
+import {geminiTranscribe,geminiAnalyze,geminiIdentifySpeakers} from './gemini-provider.mjs';
+import {SPEAKER_ROLE_PROMPT,normalizeSpeakerRoles} from './speaker-roles.mjs';
 /** MAFer Audio Intelligence live MVP. No synthetic responses or persistent customer data. */
 export const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
 const OPENAI = 'https://api.openai.com/v1';
@@ -80,6 +81,39 @@ function configured(env,kind){
   const selected=kind==='transcribe'?transcriptionProvider(env):analysisProvider(env);
   return (selected==='gemini'&&!!env.GEMINI_API_KEY)||(selected==='openai'&&!!env.OPENAI_API_KEY);
 }
+
+async function identifySpeakers(request,env){
+  const adapter=analysisProvider(env);
+  if(!['gemini','openai'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported speaker intelligence provider.');
+  if(!configured(env,'analyze'))return fail(503,'NOT_CONFIGURED','The configured intelligence provider is not ready.');
+  if(Number(request.headers.get('content-length')||0)>190000)return fail(413,'TOO_LONG','Transcript exceeds the speaker identification size limit.');
+  if(!(request.headers.get('content-type')||'').includes('application/json'))
+    return fail(415,'INVALID_CONTENT_TYPE','JSON required.');
+  const payload=await request.json(),segments=cleanSegments(payload?.segments);
+  if(JSON.stringify(segments).length>140000)return fail(413,'TOO_LONG','Transcript exceeds the speaker identification size limit.');
+  if(new Set(segments.map(s=>s.speakerId)).size<2){
+    return json({ok:true,...normalizeSpeakerRoles({},segments),model:null,reason:'At least two distinct speakers required for role inference.'});
+  }
+  let raw,model,usage=null;
+  const subset=segments.map((s,index)=>({index,speakerId:s.speakerId,text:s.text}))
+    .filter((s,i)=>i<80||i>=segments.length-20);
+  if(adapter==='gemini'){
+    const result=await geminiIdentifySpeakers(segments,env,SPEAKER_ROLE_PROMPT);
+    raw=result.raw;model=result.model;usage=result.usage;
+  }else{
+    const result=await provider(OPENAI+'/chat/completions',env.OPENAI_API_KEY,{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({model:env.ANALYSIS_MODEL||'gpt-4o-mini',temperature:0,
+        response_format:{type:'json_object'},max_tokens:2048,
+        messages:[{role:'system',content:SPEAKER_ROLE_PROMPT},{role:'user',content:JSON.stringify({segments:subset})}]})
+    });
+    try{raw=JSON.parse(result.choices?.[0]?.message?.content||'');}
+    catch{const e=new Error('Speaker classification returned invalid JSON.');e.code='ROLE_INVALID_RESPONSE';e.stage='speaker-identification';throw e;}
+    model=env.ANALYSIS_MODEL||'gpt-4o-mini';usage=result.usage||null;
+  }
+  return json({ok:true,...normalizeSpeakerRoles(raw,segments),model,usage});
+}
+
 async function transcribe(request,env){
   const adapter=transcriptionProvider(env);
   if(!['gemini','openai'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported transcription provider configured.');
@@ -154,6 +188,7 @@ export async function handle(request,env={}){
     }catch{return fail(503,'PROCESSING_GUARD_UNAVAILABLE','Audio processing guard could not be verified.');}
     try{
       if(path==='/api/transcribe')return await transcribe(request,env);
+      if(path==='/api/identify-speakers')return await identifySpeakers(request,env);
       if(path==='/api/analyze')return await analyze(request,env);
       return fail(404,'NOT_FOUND','Unknown API endpoint.');
     }catch(err){
