@@ -182,3 +182,22 @@ export async function geminiAnalyze(verified,env,systemInstruction,normalize){
   return {intelligence:normalize(parsed,verified.segments.length,Object.keys(verified.speakerMapping)),
     summaryModel:model,usage:result.usageMetadata||null};
 }
+
+/** Optional transcript-only inference for agent/customer labels.
+ * All predictions remain explicitly unverified until trusted source metadata or human review.
+ */
+export async function geminiIdentifySpeakers(segments,env,systemInstruction){
+  if(!env.GEMINI_API_KEY)throw failure('GEMINI_API_KEY is not configured.','NOT_CONFIGURED');
+  const model=env.ANALYSIS_MODEL||'gemini-3.8-flash';
+  const result=await postJson(providerUrl(model),env.GEMINI_API_KEY,{
+    systemInstruction:{parts:[{text:systemInstruction}]},
+    contents:[{role:'user',parts:[{text:JSON.stringify({
+      segments:segments.map((s,index)=>({index,speakerId:s.speakerId,text:s.text})).filter((s,i)=>i<80||i>=segments.length-20)
+    })}]}],
+    generationConfig:{responseMimeType:'application/json',temperature:0,maxOutputTokens:2048}
+  });
+  const content=(result?.candidates?.[0]?.content?.parts||[])
+    .filter(p=>typeof p.text==='string').map(p=>p.text).join('');
+  try{return {raw:JSON.parse(content),model,usage:result.usageMetadata||null};}
+  catch{throw failure('Speaker classification returned invalid JSON.','GEMINI_INVALID_RESPONSE','speaker-identification');}
+}
