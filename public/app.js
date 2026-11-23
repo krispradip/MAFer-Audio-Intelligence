@@ -39,13 +39,13 @@ function setOrigin(id,description,imported=false){
 }
 function clearMetadata(){
   $('conversationId').value='';$('agentName').value='';$('brand').value='';
-  $('bu').value='VOX';$('market').value='UAE';$('language').value='auto';
+  $('bu').value='';$('market').value='';$('language').value='auto';
   $('metadataFile').value='';$('metadataState').textContent='No Genesys metadata imported';$('importMetadataBtn').disabled=true;
   setOrigin('conversationId','Not identified');
   setOrigin('agentName','Not identified');
   setOrigin('brand','Not identified');
-  setOrigin('bu','Preset: VOX · confirm');
-  setOrigin('market','Preset: UAE · confirm');
+  setOrigin('bu','Not supplied');
+  setOrigin('market','Not supplied');
   setOrigin('language','Auto-detect on transcription');
 }
 function meta(){return {conversationId:$('conversationId').value.trim(),agentName:$('agentName').value.trim(),bu:$('bu').value,brand:$('brand').value.trim(),market:$('market').value,language:$('language').value==='auto'?'Auto-detect / bilingual':$('language').value==='ar'?'Arabic':'English'};}
@@ -97,6 +97,7 @@ function reset(full=true){
   clearMetadata();
   ['stt','roles','llm','qa'].forEach((k)=>status(k,'',k==='stt'||k==='llm'?'Not started':k==='roles'?'Waiting for audio':'No export available'));
   steps(1);clearNotice();syncNavigation();
+  progressStage(0,'Ready to process','Select a recording or wait for the next automatic folder scan.','Idle');
 }
 function pick(next){
   if(busy)return;
@@ -316,7 +317,8 @@ function renderResults(){
   $('sentiment').textContent=v.closingSentiment?.value||'Unclear';$('resolutionStatus').textContent=v.resolution?.status||'Unclear';$('issueCount').textContent=String(v.issues?.length||0);
   const em=(v.emotionalIndicators||[]).map(f=>({description:f.kind+' ('+(roles[f.speakerId]||f.speakerId)+')',evidenceSegmentIndices:f.evidenceSegmentIndices}));
   const sig=(v.conversationSignals||[]).map(f=>({description:f.kind+': '+f.description,evidenceSegmentIndices:f.evidenceSegmentIndices}));
-  const sections=[['Issues raised',v.issues],['Actions stated',v.actions],['Promises & commitments',v.commitments],['Next steps',v.nextSteps],['Emotional indicators based on words',em],['Explicit conversation signals',sig]];
+  const timeline=(v.sentimentTimeline||[]).map(f=>({description:f.value+' ('+(roles[f.speakerId]||f.speakerId)+')',evidenceSegmentIndices:f.evidenceSegmentIndices}));
+  const sections=[['Issues raised',v.issues],['Customer questions',v.customerQuestions],['Agent questions',v.agentQuestions],['Clarifications',v.clarifications],['Acknowledgements',v.acknowledgements],['Opening signals',v.openingSignals],['Empathy expressions',v.empathyExpressions],['Apologies',v.apologies],['Positive statements',v.positiveStatements],['Name mentions',v.nameMentions],['Products, services & location references',v.entityReferences],['Escalation requests',v.escalationRequests],['Actions stated',v.actions],['Promises & commitments',v.commitments],['Follow-up mentions',v.followupMentions],['Next steps',v.nextSteps],['Closing signals',v.closingSignals],['Sentiment timeline',timeline],['Emotional indicators based on words',em],['Explicit conversation signals',sig]];
   $('results').innerHTML=`<h3>CRM summary</h3><p>${safe(v.summary||'Unclear')}</p><h3>Reason for contact</h3><p>${safe(v.reasonForContact||'Unclear')}</p><h3>Resolution</h3><p>${safe(v.resolution?.description||'No confirmed resolution.')} ${evidence(v.resolution?.evidenceSegmentIndices)}</p><h3>Customer closing sentiment evidence</h3><p>${evidence(v.closingSentiment?.evidenceSegmentIndices)}</p>`+sections.map(([title,items])=>`<h3>${safe(title)}</h3>${facts(items)}`).join('');
 }
 $('results').addEventListener('click',e=>{const target=e.target.closest('[data-evidence]');if(!target||!file)return;const seg=transcription?.segments?.[Number(target.dataset.evidence)];if(seg){const audio=$('evidencePlayer');audio.currentTime=seg.startMs/1000;audio.play().catch(()=>{});audio.scrollIntoView({behavior:'smooth',block:'center'});}});
