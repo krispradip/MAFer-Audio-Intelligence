@@ -62,3 +62,68 @@
   }
   .sidebar .side-link span { font-size:15px; }
 }
+
+
+/* Dedicated application views: one action per route, retaining session state. */
+body[data-view] #uploadPanel,
+body[data-view] #configPanel,
+body[data-view] #transcriptionPanel,
+body[data-view] #transcriptEmpty,
+body[data-view] #resultsPanel,
+body[data-view] #qaEmpty { display:none!important; }
+body[data-view="analyzer"] #uploadPanel,
+body[data-view="config"] #configPanel,
+body[data-view="transcript"] #transcriptionPanel:not([hidden]),
+body[data-view="transcript"] #transcriptEmpty:not([hidden]),
+body[data-view="handoff"] #resultsPanel:not([hidden]),
+body[data-view="handoff"] #qaEmpty:not([hidden]) { display:block!important; }
+
+body[data-view]:not([data-view="analyzer"]) .hero,
+body[data-view]:not([data-view="analyzer"]) .steps,
+body[data-view]:not([data-view="analyzer"]) .rail { display:none!important; }
+body[data-view]:not([data-view="analyzer"]) .main-grid {
+  display:block;
+  max-width:1140px;
+  margin:0 auto;
+}
+body[data-view]:not([data-view="analyzer"]) .main-grid > div:first-child {width:100%;}
+body[data-view="analyzer"] .rail { align-content:start; }
+
+/* Additional technical connection details belong on Settings, not Analyzer. */
+.config-support { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:24px; }
+.config-support > .panel { margin:0; box-shadow:none; }
+.empty-view { min-height:260px; }
+.empty-view .panel-body {display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:40px;gap:10px;}
+.empty-view h2 {font-size:21px;margin:0;}
+.empty-view p {max-width:520px;color:var(--muted);margin:0 0 8px;}
+.empty-icon {border-radius:14px;background:#e9f2ff;color:#326deb;width:54px;height:54px;display:grid;place-items:center;font-size:27px;}
+.context-player {width:100%;margin:0 0 18px;}
+.transcript .evidence {text-align:right;color:#326deb;font-weight:700;text-decoration:none;}
+
+/* Mobile: permanent two-by-two navigation; no more four screens stacked. */
+@media(max-width:780px){
+  .sidebar {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    align-items:stretch;
+    padding:12px;
+  }
+  .sidebar .brand {grid-column:1/-1;margin:0 0 4px;}
+  .sidebar .side-link[type="button"] {
+    width:100%;
+    min-width:0;
+    display:flex;
+    padding:11px 9px;
+    justify-content:flex-start;
+    font-size:12px;
+  }
+  .sidebar .side-link span {font-size:16px;flex:none;}
+  .steps {display:none!important;}
+  .hero {margin-bottom:16px;}
+  .hero h1 {font-size:23px;}
+  .config-support {grid-template-columns:1fr;}
+  .empty-view .panel-body {padding:25px 19px;}
+  .line header {align-items:flex-start;}
+  .line .evidence {white-space:normal;min-width:110px;}
+}
