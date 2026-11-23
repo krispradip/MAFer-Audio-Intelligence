@@ -9,6 +9,7 @@ const clock=ms=>{const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/6
 const MAX=24*1024*1024;
 let file=null,localUrl=null,transcription=null,analysis=null,roles={},durationMs=null,completeCount=0,busy=false;
 let roleSource='unconfirmed',pendingAutoKey=null,autoScanBusy=false,automaticSessionCount=0;
+let recordingOrigin='Manual audio upload';
 
 const status=(key,value,detail)=>{const dot=$(key+'Dot');if(dot)dot.className='statusdot '+value;const target=$(key+'State');if(target)target.textContent=detail;};
 function progressStage(done,title,detail,stage,error=false){
@@ -49,7 +50,7 @@ function clearMetadata(){
   setOrigin('market','Not supplied');
   setOrigin('language','Auto-detect on transcription');
 }
-function meta(){return {conversationId:$('conversationId').value.trim(),agentName:$('agentName').value.trim(),bu:$('bu').value,brand:$('brand').value.trim(),market:$('market').value,language:$('language').value==='auto'?'Auto-detect / bilingual':$('language').value==='ar'?'Arabic':'English'};}
+function meta(){return {conversationId:$('conversationId').value.trim(),agentName:$('agentName').value.trim(),bu:$('bu').value,brand:$('brand').value.trim(),market:$('market').value,language:$('language').value==='auto'?'Auto-detect / bilingual':$('language').value==='ar'?'Arabic':'English',source:recordingOrigin};}
 function metadataChanged(){
   if(!analysis)return;
   analysis=null;$('resultsPanel').hidden=true;syncNavigation();
@@ -105,7 +106,7 @@ function pick(next){
   const ext=(next?.name||'').split('.').pop().toLowerCase();
   if(!next||!['mp3','wav','m4a','aac','flac','ogg','webm','mp4','mpeg','mpga'].includes(ext))return notice('Select a supported audio file.','error');
   if(next.size<1||next.size>MAX)return notice('Recording must be nonempty and no larger than 24 MB.','error');
-  reset(false);file=next;localUrl=URL.createObjectURL(next);$('player').src=localUrl;$('player').hidden=false;
+  reset(false);recordingOrigin='Manual audio upload';file=next;localUrl=URL.createObjectURL(next);$('player').src=localUrl;$('player').hidden=false;
   for(const id of ['transcriptPlayer','evidencePlayer']){$(id).src=localUrl;$(id).hidden=true;}
   const detectedId=conversationIdFromFilename(next.name);
   if(detectedId){
@@ -259,7 +260,7 @@ async function runInteractionAnalysis({automatic=false}={}){
   try{
     analysis=await api('analyze',{
       headers:{'content-type':'application/json'},
-      body:JSON.stringify({segments:transcription.segments,speakerMapping:roles,metadata:meta()})
+      body:JSON.stringify({segments:transcription.segments,speakerMapping:roles,roleSource,metadata:meta()})
     });
     if(!analysis.intelligence)throw Error('The provider returned no intelligence findings.');
     renderResults();
@@ -336,7 +337,7 @@ function exportPackage(){
     timelineMetrics:deriveTimelineMetrics(transcription.segments,roles,durationMs),
     transcript:{transcriptSchemaVersion:'1.0',segments:transcription.segments.map(s=>({...s,speaker:roles[s.speakerId]})),language:transcription.language,source:'Real audio transcription',model:transcription.provider?.transcriptionModel},
     intelligence:{...analysis.intelligence,outputSchemaVersion:analysis.outputSchemaVersion,analysisSource:analysis.analysisSource,model:analysis.summaryModel,generatedAt:analysis.generatedAt},
-    integration:{transport:'Manual JSON export',s3Published:false,crmUpdated:false,qaIngested:false}};
+    integration:{transport:configValues().output==='local'?'Local folder export':'Browser download',s3Published:false,crmUpdated:false,qaIngested:false}};
 }
 function download(content,type,suffix){
   const id=meta().conversationId||('manual-'+Date.now());const base=id.replace(/[^a-zA-Z0-9._-]+/g,'_').slice(0,100)||'manual';
@@ -492,10 +493,14 @@ async function scanConfiguredInput(){
     const next=pending[0];
     queueMessage('Processing '+next.entry.relative+' automatically. '+pending.length+' file(s) waiting.');
     pick(next.audio);
+    recordingOrigin='Local folder automation';
     try{
       const sidecar=await readMetadataSidecar(next.entry);
       if(sidecar){
         const fields=metadataFromJson(sidecar);
+        const fromFilename=conversationIdFromFilename(next.audio.name);
+        if(fromFilename&&fields.conversationId&&fromFilename.toLowerCase()!==fields.conversationId.toLowerCase())
+          throw Error('Metadata conversation ID does not match recording filename.');
         for(const id of metadataIds)if(fields[id]){
           $(id).value=fields[id];setOrigin(id,'From local recording metadata',true);
         }
