@@ -82,46 +82,58 @@ Google references:
 - https://ai.google.dev/gemini-api/docs/file-input-methods
 
 
-## Local HDD POC — input, output and provider configuration
+## Automatic local-folder processing and one-click manual analysis
 
-On the `feature/universal-io-provider-config` branch, the live UI adds **Configuration** to the sidebar. This is an incremental POC change. Existing manual audio upload, Gemini transcription, speaker-role confirmation, transcript JSON export, and AI analysis remain intact.
+This capability is part of personal GitHub `main`. Cloudflare deployment must be checked independently; a merged commit does not guarantee a live Worker update.
 
-1. Open the application in **Microsoft Edge or Chrome over HTTPS or localhost**.
-2. Select **Configuration → Input source → Local HDD folder**, then **Select input folder**. Grant permission, click **Scan for audio**, choose a recording and **Load recording**. The existing size limit remains 24 MB.
-3. Choose **Output destination → Local HDD folder**, select an output folder, and click **Test output access**. Click **Save POC settings** to remember the selected source/output modes in this browser.
-4. Run **Transcribe audio**, confirm the speaker roles, and run **Analyze interaction with AI**. On successful analysis, a full JSON evidence package is written automatically to the selected output folder.
-5. **Manual upload** and manual QA JSON/TXT downloads remain available regardless of the configured input mode.
+### Manual analysis
 
-Folder permissions are granted explicitly by the user. Browser directory handles persist in IndexedDB, but browsers may require reauthorization; if access is denied, the application displays an error. The backend cannot read your computer's file system. The folder mode is manual scan/select, **not a background folder watcher or automatic batch queue**.
+Select an audio recording from **Audio Upload**, then click **Transcribe** once. The interface runs:
 
-### Local output structure
+1. Timestamped speech transcription (Gemini in the personal environment).
+2. Evidence-gated speaker role inference. If the speakers cannot be identified confidently, the transcript remains available and the user is asked to confirm speaker roles rather than silently misattributing the interaction.
+3. AI extraction of transcript-grounded contact reason, questions, clarifications, acknowledgements, spoken empathy, commitments, stated actions, sentiment and summary.
+4. Automatic output to a local folder if configured; otherwise, a combined JSON browser download is requested.
 
-The folder writer produces:
+Real step-by-step progress appears above every page; **Operations & Health** shows processing diagnostics.
+
+### Local folder automation
+
+On desktop Chrome/Edge over HTTPS or localhost:
+
+1. Open **Configuration**. Select **Local HDD folder** for both input and output.
+2. Choose each folder once, grant browser access and click **Save Settings**.
+3. Leave the web application open. It scans for new audio files automatically (one file per scan, roughly every 85 seconds), transcribes, identifies speakers, extracts intelligence and writes the output package. No Scan, Load or Analyze buttons are required for straightforward recordings.
+
+The browser's file access handles are retained with IndexedDB and may require permission renewal. This is **not a system-level background process**: it stops when the browser page closes, is suspended or loses permissions. A local service/runner is required for true unattended computer operation.
+
+POC safeguards: at most 12 automatic recordings per open session; 24 MB maximum per file; files are deduplicated by relative path, size and modification time; failures are displayed in Operations and retried no sooner than 15 minutes later. Speaker ambiguity pauses the queue until review. These limits are deliberate cost/accuracy guards, not production throughput specifications.
+
+Automatic metadata lookup supports adjacent `<audio filename>.json`, `<audio filename stem>.json`, or `<audio filename stem>.metadata.json` companion files. The Genesys conversation ID is checked against the UUID in the recording filename if both exist. Missing BU/market fields remain **Unassigned**, never defaulted to VOX or UAE.
+
+### Output folder structure
 
 ```text
-03_Completed/BU/Brand/Market/YYYY/MM/DD/GenesysConversationID/run-.../
+03_Completed/BU/Brand/Market/YYYY/MM/DD/InteractionID/run-.../
   Full_Transcript/transcript.json
   Full_Transcript/transcript.txt
   CRM_Summary/summary.json
   Machine_Data/interaction_metadata.json
   Machine_Data/universal_intelligence.json
+  Machine_Data/timeline_metrics.json
   Machine_Data/acoustic_evidence.json
   Machine_Data/evidence_provenance.json
   manifest.json
 ```
 
-Every run receives a unique run directory, so earlier outputs are preserved. The manifest is written last. The **same relative layout is the target for the future S3 adapter**, which is not yet implemented. S3 and Amazon Transcribe choices are visible but disabled to avoid reporting nonexistent connectivity.
+The manifest is written last. `timeline_metrics.json` contains **provider-timestamp-derived** talk ratios, gaps and possible overlap intervals, not waveform-verified acoustic events. The physical audio analyzer has not yet been connected; `acoustic_evidence.json` explicitly says `NOT_PROCESSED`. Do not score acoustic-only QA criteria using unverified timing candidates.
 
-### What is really implemented
+### S3 and Amazon Transcribe
 
-- Actual backend Gemini provider remains active where configured.
-- The Configuration Console displays the deployed provider and model from `/api/health`. It does **not** change runtime endpoints, secrets or models; such edits require an authenticated backend configuration service.
-- Local output contains the existing evidence-backed interaction intelligence. The expanded universal catalogue and physical audio-acoustic analyzer remain future work.
-- `acoustic_evidence.json` explicitly records `NOT_PROCESSED` rather than fabricating silence, pitch, emotion or interruption measurements.
-- No direct QA scoring or ingestion is attempted, and local output is never claimed to be S3-published.
-- The POC has no real user authentication. **Do not use customer-sensitive recordings or corporate credentials on the public personal Cloudflare Worker.**
-- The repository commit does not prove Cloudflare deployed these changes. Validate the branch in a secure preview or local Wrangler instance first.
+The future corporate implementation should scan S3 asynchronously on EKS and use Amazon Transcribe for transcription, applying the same versioned output contract. **S3 input/output, EKS job scheduling, Amazon Transcribe and secure model/endpoint editing are not yet connected on the personal Cloudflare Worker**. Their unavailable UI options remain disabled instead of pretending to work.
 
-### Future corporate mode
+### Privacy and deployment
 
-The corporate version will use Amazon Transcribe for transcription, an approved AI analysis provider, and an S3 storage adapter with equivalent object-key paths. Corporate IAM, configuration persistence, audit, authorization and health tests are separate production integration work, not present in this POC.
+The personal Cloudflare Worker has no corporate SSO and Gemini sends audio to an external provider. Use non-sensitive approved test recordings only; do not place production customer calls in the watched folder. Credentials are held in backend secrets, not in the browser. Manual uploads continue to work even if folder access is unavailable, including on mobile.
+
+Validation: `npm test`, followed by an actual desktop browser run with a test audio file and verification that all JSON outputs exist. The end-to-end vendor path and deployed Cloudflare version are separate checks.
