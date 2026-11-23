@@ -145,7 +145,7 @@ export async function saveToLocalFolder(pkg){
     schemaVersion:'1.0',producer:'MAFer Audio Intelligence',createdAt:date.toISOString(),
     status:'COMPLETE',qaScoringPerformed:false,conversationId:pkg.metadata.conversationId||null,
     bu:pkg.metadata.bu||null,agentName:pkg.metadata.agentName||null,brand:pkg.metadata.brand||null,
-    market:pkg.metadata.market||null,source:'manual_or_local_folder_poc',speakerRoleSource:pkg.speakerRoleSource||'not_verified',speakerRolesVerified:pkg.speakerRolesVerified===true,
+    market:pkg.metadata.market||null,source:pkg.metadata.source||'unspecified',speakerRoleSource:pkg.speakerRoleSource||'not_verified',speakerRolesVerified:pkg.speakerRolesVerified===true,
     stages:{transcription:'completed',intelligence:'completed',acoustic:'NOT_PROCESSED',crmUpdate:'NOT_CONNECTED'},
     files:artifacts.map(a=>a.path.join('/')),outputPrefix:prefix.join('/')
   };
