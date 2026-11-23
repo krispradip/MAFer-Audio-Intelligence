@@ -238,6 +238,7 @@ function renderSpeakers(){
 $('speakerMap').addEventListener('change',e=>{
   if(!e.target.matches('[data-speaker]')||busy)return;
   roles[e.target.dataset.speaker]=e.target.value;
+  roleSource='human_confirmed';
   analysis=null;$('resultsPanel').hidden=true;syncNavigation();status('qa','','No export available');status('llm','','Awaiting analysis');
   status('roles',roleReady()?'done':'busy',roleReady()?'All speaker roles confirmed':'Assign agent and customer');
   renderSpeakers();renderTranscript();clearNotice();
@@ -246,22 +247,64 @@ function renderTranscript(){
   if(!transcription)return;
   $('transcript').innerHTML=transcription.segments.map((s,i)=>`<div class="line" data-role="${safe(roles[s.speakerId])}"><header><span>${safe(roles[s.speakerId]||'Speaker '+s.speakerId)}</span><span>${clock(s.startMs)} – ${clock(s.endMs)}</span></header><p dir="auto">${safe(s.text)}</p></div>`).join('');
 }
+
+async function runInteractionAnalysis({automatic=false}={}){
+  if(!transcription||!roleReady())return {state:'needs_review'};
+  steps(3);
+  status('llm','busy','Extracting interaction intelligence…');
+  progressStage(3,'Extracting intelligence','Analyzing dialogue, issues, actions, commitments, resolution and sentiment.','AI analysis');
+  notice('Transcript ready. Running interaction intelligence automatically…','busy');
+  try{
+    analysis=await api('analyze',{
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({segments:transcription.segments,speakerMapping:roles,metadata:meta()})
+    });
+    if(!analysis.intelligence)throw Error('The provider returned no intelligence findings.');
+    renderResults();
+    $('resultsPanel').hidden=false;
+    $('evidencePlayer').hidden=false;
+    syncNavigation();
+    status('llm','done','Intelligence extracted');
+    status('qa','busy','Saving the output package…');
+    progressStage(4,'Intelligence ready','Transcript, summary, events and evidence compiled. Writing the output.','Output');
+    let saved;
+    try{saved=await persistConfiguredOutput();}
+    catch(e){
+      status('qa','bad','Output save failed');
+      progressStage(4,'Output requires attention',e.message,'Needs attention',true);
+      notice('Analysis completed, but the output could not be saved: '+e.message+'. You can still export the JSON.','error');
+      if(!automatic)navigation.navigate('intelligence');
+      return {state:'output_failed',error:e.message};
+    }
+    status('qa','done',saved.description);
+    progressStage(5,'Processing complete',saved.description,'Completed');
+    completeCount++;
+    $('completedCount').textContent=String(completeCount);
+    notice('Transcript and intelligence completed. '+saved.description);
+    if(!automatic)navigation.navigate('intelligence');
+    return {state:'done',saved:true};
+  }catch(e){
+    status('llm','bad',e.httpStatus?'HTTP '+e.httpStatus+' · '+(e.errorCode||'PROCESSING_FAILED'):'Analysis failed');
+    progressStage(3,'AI analysis failed',e.message,'Needs attention',true);
+    notice('AI analysis failed: '+e.message,'error');
+    if(!automatic)navigation.navigate('transcript');
+    return {state:'failed',error:e.message};
+  }
+}
 $('analyzeBtn').addEventListener('click',async()=>{
   if(busy||!transcription||!roleReady())return;
-  busy=true;$('analyzeBtn').disabled=true;steps(3);status('llm','busy','Running AI against verified transcript…');notice('Calling the analysis LLM. Evidence is grounded in the timestamped transcript.','busy');
+  busy=true;
+  $('analyzeBtn').disabled=true;
   try{
-    analysis=await api('analyze',{headers:{'content-type':'application/json'},body:JSON.stringify({segments:transcription.segments,speakerMapping:roles,metadata:meta()})});
-    if(!analysis.intelligence)throw new Error('The model response has no intelligence section.');
-    renderResults();$('resultsPanel').hidden=false;syncNavigation();status('llm','done','Live LLM response received');status('qa','done','QA-ready JSON available for download');
-    completeCount++;$('completedCount').textContent=String(completeCount);notice('Analysis completed using the real LLM. Download the QA handoff JSON.');
-    await autoSaveConfiguredOutput();
-    $('evidencePlayer').hidden=false;
-    navigation.navigate('intelligence');
-  }catch(e){
-    steps(2);status('llm','bad',e.httpStatus?'HTTP '+e.httpStatus+' · '+(e.errorCode||'PROCESSING_FAILED'):'Analysis failed');
-    notice('AI analysis failed: '+e.message,'error');
+    const result=await runInteractionAnalysis({automatic:Boolean(pendingAutoKey)});
+    if(result.state==='done'&&pendingAutoKey){
+      markAutoCompleted(pendingAutoKey);
+      pendingAutoKey=null;
+    }
+  }finally{
+    busy=false;
+    $('analyzeBtn').disabled=!roleReady();
   }
-  finally{busy=false;$('analyzeBtn').disabled=!roleReady();}
 });
 function evidence(indices){
   if(!Array.isArray(indices)||!indices.length)return '<small class="helper">No verified evidence</small>';
