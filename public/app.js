@@ -1,13 +1,25 @@
 // Actual audio and model responses only. No seeded interactions or fake success statuses.
 import {conversationIdFromFilename,metadataFromJson} from './metadata.js';
 import {initWorkspaceNavigation} from './navigation.js';
-import {localFoldersSupported,selectFolder,getFolder,listAudioFiles,testLocalFolder,saveToLocalFolder} from './local-folders.js';
+import {localFoldersSupported,selectFolder,getFolder,listAudioFiles,readMetadataSidecar,saveToLocalFolder} from './local-folders.js';
 const $ = id => document.getElementById(id);
 const safe = x => String(x??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clock=ms=>{const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);return (h?String(h).padStart(2,'0')+':':'')+String(m%60).padStart(2,'0')+':'+String(s%60).padStart(2,'0')+'.'+String(ms%1000).padStart(3,'0');};
 const MAX=24*1024*1024;
 let file=null,localUrl=null,transcription=null,analysis=null,roles={},durationMs=null,completeCount=0,busy=false;
+let roleSource='unconfirmed',pendingAutoKey=null,autoScanBusy=false,automaticSessionCount=0;
+
 const status=(key,value,detail)=>{const dot=$(key+'Dot');if(dot)dot.className='statusdot '+value;const target=$(key+'State');if(target)target.textContent=detail;};
+function progressStage(done,title,detail,stage,error=false){
+  $('progressBar').value=Math.max(0,Math.min(5,done));
+  $('progressTitle').textContent=title;
+  $('progressDetail').textContent=detail;
+  $('progressStage').textContent=stage;
+  $('progressCount').textContent=done+' / 5 stages';
+  $('processingRibbon').classList.toggle('progress-error',error);
+  $('processingRibbon').classList.toggle('progress-active',!error&&done>0&&done<5);
+}
+
 function notice(message,kind='success'){$('message').hidden=false;$('message').className='message '+(kind==='success'?'':kind);$('message').textContent=message;}
 function clearNotice(){$('message').hidden=true;$('message').textContent='';}
 function steps(active){document.querySelectorAll('[data-step]').forEach(el=>{const idx=Number(el.dataset.step);el.classList.toggle('active',idx===active);el.classList.toggle('done',idx<active);});}
@@ -138,34 +150,85 @@ async function health(){
   }catch{ $('engineStatus').textContent='Backend unavailable';$('engineStatus').style.color='#ba5964';$('sttModel').textContent='Unavailable';$('llmModel').textContent='Unavailable';$('protectionStatus').textContent='Backend unavailable';}
 }
 $('refreshHealth').addEventListener('click',health);
-$('transcribeBtn').addEventListener('click',async()=>{
-  if(!file||busy)return;
-  const body=new FormData();body.append('audio',file,file.name);const lang=$('language').value;if(lang!=='auto')body.append('language',lang);
-  busy=true;$('transcribeBtn').disabled=true;$('transcriptionPanel').hidden=true;$('resultsPanel').hidden=true;transcription=null;analysis=null;roles={};syncNavigation();status('qa','','No export available');
-  status('stt','busy','Uploading and processing audio…');status('roles','','Waiting for speaker output');status('llm','','Waiting for transcription');steps(2);notice('Sending recording to the speech-to-text model. This is a real processing request.','busy');
+
+async function processRecording({automatic=false}={}){
+  if(!file||busy)return {state:'busy'};
+  busy=true;
+  $('transcribeBtn').disabled=true;
+  $('transcriptionPanel').hidden=true;
+  $('resultsPanel').hidden=true;
+  transcription=null;analysis=null;roles={};roleSource='unconfirmed';
+  syncNavigation();
+  status('qa','','Processing');
+  status('stt','busy','Uploading and transcribing audio…');
+  status('roles','','Waiting for transcription');
+  status('llm','','Waiting for transcription');
+  steps(2);
+  progressStage(1,'Transcribing audio','Uploading audio and waiting for the speech provider.','Speech recognition');
+  notice('Processing recording: '+file.name,'busy');
   try{
+    const body=new FormData();
+    body.append('audio',file,file.name);
+    const lang=$('language').value;
+    if(lang!=='auto')body.append('language',lang);
     const res=await api('transcribe',{body});
-    if(!Array.isArray(res.segments)||!res.segments.length||!Array.isArray(res.speakerIds)||!res.speakerIds.length)throw new Error('The speech provider did not return a usable speaker-labeled transcript.');
-    // Never accept fabricated or out-of-order timestamps. Overlapping speech is allowed.
-    let last=-1;for(const segment of res.segments){
-      if(!Number.isInteger(segment.startMs)||!Number.isInteger(segment.endMs)||segment.startMs<0||segment.startMs<last||segment.endMs<=segment.startMs||!segment.speakerId||!segment.text?.trim())throw new Error('Invalid timestamped segment returned.');
-      if(durationMs!==null&&segment.endMs>durationMs+2500)throw new Error('Transcript exceeds the detected recording duration. Review alignment.');
+    if(!Array.isArray(res.segments)||!res.segments.length||!Array.isArray(res.speakerIds)||!res.speakerIds.length)
+      throw Error('Speech provider returned no speaker-labelled timestamped transcript.');
+    let last=-1;
+    for(const segment of res.segments){
+      if(!Number.isInteger(segment.startMs)||!Number.isInteger(segment.endMs)||segment.startMs<0||segment.startMs<last||segment.endMs<=segment.startMs||!segment.speakerId||!segment.text?.trim())
+        throw Error('Invalid timestamped segment returned; analysis was not attempted.');
+      if(durationMs!==null&&segment.endMs>durationMs+2500)
+        throw Error('Transcript extends beyond the recording duration; review alignment.');
       last=segment.startMs;
     }
-    transcription=res;roles=Object.fromEntries(res.speakerIds.map(s=>[s,'']));
-    $('transcriptionPanel').hidden=false;renderSpeakers();renderTranscript();syncNavigation();
+    transcription=res;
+    roles=Object.fromEntries(res.speakerIds.map(s=>[s,'']));
+    $('transcriptionPanel').hidden=false;
     $('segmentCount').textContent=res.segments.length+' segments';
-    status('stt','done',res.segments.length+' timestamped segments produced');status('roles','busy','Assign speaker roles to continue');
-    notice('Actual audio transcription completed. Confirm agent and customer speakers before analysis.');
     $('transcriptPlayer').hidden=false;
+    renderSpeakers();renderTranscript();syncNavigation();
+    status('stt','done',res.segments.length+' timestamped segments');
+    status('roles','busy','Identifying agent and customer speakers…');
+    progressStage(2,'Transcript ready','Identifying speaker roles from supported dialogue.','Speaker identification');
+    let mapped=null;
+    try{
+      mapped=await api('identify-speakers',{
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({segments:res.segments})
+      });
+    }catch(e){
+      status('roles','bad','Automatic identification unavailable: '+e.message);
+    }
+    if(mapped&&!mapped.requiresReview&&mapped.speakerMapping){
+      roles={...mapped.speakerMapping};
+      roleSource='transcript_inference_unverified';
+      renderSpeakers();renderTranscript();syncNavigation();
+      status('roles','done','Inferred from dialogue; not independently verified');
+      progressStage(3,'Speakers identified','Agent/customer roles inferred with supporting speech evidence.','AI analysis');
+      return await runInteractionAnalysis({automatic});
+    }
+    roleSource='needs_human_review';
+    status('roles','bad','Needs speaker confirmation');
+    renderSpeakers();renderTranscript();syncNavigation();
+    progressStage(2,'Speaker review needed','Transcript saved in this session. Confirm roles once to continue analysis.','Needs attention',true);
+    notice('Transcription finished, but agent/customer roles could not be established confidently. Review speakers to continue.','error');
     navigation.navigate('transcript');
+    return {state:'needs_review'};
   }catch(e){
-    const marker=e.httpStatus?'HTTP '+e.httpStatus+' · '+(e.errorCode||'PROCESSING_FAILED')+' · '+(e.errorStage||'unknown'):'Transcription request failed';
-    status('stt','bad',marker);steps(1);
-    notice('Transcription failed: '+e.message+' — '+(e.httpStatus?'HTTP '+e.httpStatus:'connection error')+'. The audio was not transcribed.','error');
+    const where=e.errorStage||'transcription';
+    status('stt','bad',e.httpStatus?'HTTP '+e.httpStatus+' · '+(e.errorCode||'PROCESSING_FAILED'):'Transcription failed');
+    progressStage(1,'Transcription failed',where+': '+e.message,'Needs attention',true);
+    steps(1);
+    notice('Transcription failed: '+e.message,'error');
+    return {state:'failed',error:e.message};
+  }finally{
+    busy=false;
+    $('transcribeBtn').disabled=!file;
+    $('analyzeBtn').disabled=!roleReady();
   }
-  finally{busy=false;$('transcribeBtn').disabled=!file;}
-});
+}
+$('transcribeBtn').addEventListener('click',()=>{processRecording().catch(e=>notice('Pipeline failed: '+e.message,'error'));});
 function roleReady(){const r=Object.values(roles);return r.length>0&&r.every(x=>['Agent','Customer','Other'].includes(x))&&r.includes('Agent')&&r.includes('Customer');}
 function renderSpeakers(){
   $('speakerMap').innerHTML=transcription.speakerIds.map((s,i)=>`<div class="speaker-card"><b>Speaker ${safe(s)}</b><select data-speaker="${safe(s)}"><option value="">Select role…</option>${['Agent','Customer','Other'].map(r=>`<option value="${r}" ${roles[s]===r?'selected':''}>${r}</option>`).join('')}</select></div>`).join('');
