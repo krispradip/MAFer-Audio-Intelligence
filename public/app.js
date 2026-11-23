@@ -323,6 +323,7 @@ $('results').addEventListener('click',e=>{const target=e.target.closest('[data-e
 function exportPackage(){
   if(!analysis||!transcription||!roleReady())throw new Error('Finish real transcription and AI analysis first.');
   return {handoffSchemaVersion:'1.0',producer:'MAFer Audio Intelligence',destination:'QA.MAFer.AI',qaScoringPerformed:false,readyForQA:true,
+    speakerRoleSource:roleSource,speakerRolesVerified:roleSource==='human_confirmed',
     recording:{originalFileName:file.name,fileSizeBytes:file.size,durationMs,uploadedAt:new Date().toISOString()},
     metadata:analysis.metadata,speakerMapping:{...roles},
     transcript:{transcriptSchemaVersion:'1.0',segments:transcription.segments.map(s=>({...s,speaker:roles[s.speakerId]})),language:transcription.language,source:'Real audio transcription',model:transcription.provider?.transcriptionModel},
@@ -336,92 +337,185 @@ function download(content,type,suffix){
 $('downloadJson').addEventListener('click',()=>{try{download(JSON.stringify(exportPackage(),null,2),'application/json','QA_handoff.json');notice('QA JSON exported. The QA service has not been called.');}catch(e){notice(e.message,'error');}});
 $('downloadText').addEventListener('click',()=>{try{const pkg=exportPackage(),lines=pkg.transcript.segments.map(s=>`[${clock(s.startMs)} – ${clock(s.endMs)}] ${s.speaker}: ${s.text}`);download(['MAFer Audio Intelligence · Verified timestamped transcript','Conversation ID: '+(pkg.metadata.conversationId||'Not supplied'),'Agent: '+(pkg.metadata.agentName||'Not supplied'),'','' ,...lines].join('\n'),'text/plain;charset=utf-8','transcript.txt');notice('Transcript downloaded.');}catch(e){notice(e.message,'error');}});
 
-// Local HDD configuration and evidence export. No secrets or customer audio are kept in localStorage.
+// Folder automation is intentionally limited to an open desktop browser.
+// EKS S3 queues and unattended HDD watching require their own approved runners.
 const SETTINGS_KEY='mafer-poc-storage-settings-v1';
-let localEntries=[];
+const AUTO_LEDGER_KEY='mafer-local-processed-v1';
+const AUTO_SCAN_INTERVAL_MS=85000; // One file per scan to respect the POC rate limiter.
+const AUTO_SESSION_LIMIT=12; // Avoid unexpected bulk model charges in the public POC.
 function configMessage(message,error=false){
-  const node=$('configurationStatus');node.textContent=message;node.style.color=error?'#ba5964':'';
+  const node=$('configurationStatus');
+  node.textContent=message;node.style.color=error?'#ba5964':'';
 }
 function configValues(){return {input:$('configInputType').value,output:$('configOutputType').value};}
+function ledger(){
+  try{
+    const value=JSON.parse(localStorage.getItem(AUTO_LEDGER_KEY)||'{}');
+    return value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+  }catch{return {};}
+}
+function writeLedger(value){
+  const keys=Object.keys(value).sort((a,b)=>(value[b].updatedAt||0)-(value[a].updatedAt||0)).slice(0,1000);
+  const limited=Object.fromEntries(keys.map(key=>[key,value[key]]));
+  localStorage.setItem(AUTO_LEDGER_KEY,JSON.stringify(limited));
+}
+function markAutoCompleted(key){
+  const records=ledger();
+  records[key]={status:'completed',updatedAt:Date.now()};
+  writeLedger(records);
+  $('queueCompleted').textContent=String(Object.values(records).filter(x=>x.status==='completed').length);
+}
+function markAutoFailed(key,reason){
+  const records=ledger();
+  records[key]={status:'failed',reason:String(reason||'Processing failed').slice(0,180),
+    retryAfter:Date.now()+15*60*1000,updatedAt:Date.now()};
+  writeLedger(records);
+  $('queueFailed').textContent=String(Object.values(records).filter(x=>x.status==='failed').length);
+}
 async function refreshFolderLabels(){
   for(const key of ['input','output']){
     const h=await getFolder(key);
-    $(key+'FolderStatus').textContent=h?'Selected: '+h.name+' (permission verified when accessed)':'No '+key+' folder selected.';
+    $(key+'FolderStatus').textContent=h?'Selected folder: '+h.name:'No '+key+' folder selected.';
   }
 }
 function loadPOCConfiguration(){
   try{
-    const c=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}');
-    if(['manual','local'].includes(c.input))$('configInputType').value=c.input;
-    if(['download','local'].includes(c.output))$('configOutputType').value=c.output;
+    const settings=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}');
+    if(['manual','local'].includes(settings.input))$('configInputType').value=settings.input;
+    if(['download','local'].includes(settings.output))$('configOutputType').value=settings.output;
   }catch{}
   if(!localFoldersSupported()){
-    for(const id of ['selectInputFolder','scanInputFolder','loadLocalFile','selectOutputFolder','testOutputFolder'])$(id).disabled=true;
-    configMessage('Local folder access needs Edge/Chrome on HTTPS or localhost; manual uploads remain available.');
+    $('selectInputFolder').disabled=true;
+    $('selectOutputFolder').disabled=true;
+    configMessage('Automatic local folder scanning needs desktop Edge/Chrome on HTTPS or localhost. Manual upload still works.');
   }
   refreshFolderLabels().catch(()=>{});
+  const records=ledger();
+  $('queueCompleted').textContent=String(Object.values(records).filter(x=>x.status==='completed').length);
+  $('queueFailed').textContent=String(Object.values(records).filter(x=>x.status==='failed').length);
 }
 $('saveConfiguration').addEventListener('click',()=>{
-  localStorage.setItem(SETTINGS_KEY,JSON.stringify(configValues()));
-  configMessage('Input/output settings saved in this browser. Provider credentials remain securely managed by the backend.');
+  const values=configValues();
+  localStorage.setItem(SETTINGS_KEY,JSON.stringify(values));
+  configMessage(values.input==='local'&&values.output==='local'?
+    'Saved. Folder scanning and processing start automatically while this desktop page is open.':
+    'Settings saved. Manual upload runs the complete pipeline with one Transcribe click.');
+  scanConfiguredInput().catch(e=>queueMessage('Automatic scan error: '+e.message));
 });
 $('selectInputFolder').addEventListener('click',async()=>{
-  try{await selectFolder('input');await refreshFolderLabels();configMessage('Input folder selected. Click Scan for audio.');}
-  catch(e){configMessage('Input selection failed: '+e.message,true);}
-});
-$('scanInputFolder').addEventListener('click',async()=>{
-  try{
-    const r=await listAudioFiles();localEntries=r.files;
-    const sel=$('localAudioFile');sel.replaceChildren(new Option('Choose a recording ('+localEntries.length+' found)',''));
-    localEntries.forEach((x,i)=>sel.add(new Option(x.relative,String(i))));
-    $('inputFolderStatus').textContent='Read access verified: '+r.folderName+' · '+localEntries.length+' recording(s)'+(r.limited?' (first 250 only)':'');
-    configMessage('Select a recording then click Load recording.');
-  }catch(e){configMessage('Input scan failed: '+e.message,true);}
-});
-$('loadLocalFile').addEventListener('click',async()=>{
-  try{
-    if(busy)throw Error('Another recording is being processed.');
-    const value=$('localAudioFile').value,index=Number(value);
-    if(value===''||!localEntries[index])throw Error('Choose a recording from the list.');
-    const selected=await localEntries[index].handle.getFile();
-    if(selected.size>MAX)throw Error('The current upload limit is 24 MB; select a smaller recording.');
-    pick(selected);
-    navigation.navigate('upload');
-  }catch(e){configMessage('Load recording failed: '+e.message,true);}
+  try{await selectFolder('input');await refreshFolderLabels();configMessage('Input folder selected. Save Settings once to enable scanning.');}
+  catch(e){configMessage('Input folder selection failed: '+e.message,true);}
 });
 $('selectOutputFolder').addEventListener('click',async()=>{
-  try{await selectFolder('output');await refreshFolderLabels();configMessage('Output folder selected. Test access to verify write permissions.');}
-  catch(e){configMessage('Output selection failed: '+e.message,true);}
+  try{await selectFolder('output');await refreshFolderLabels();configMessage('Output folder selected. Save Settings once to enable automatic output.');}
+  catch(e){configMessage('Output folder selection failed: '+e.message,true);}
 });
-$('testOutputFolder').addEventListener('click',async()=>{
-  try{const r=await testLocalFolder('output');$('outputFolderStatus').textContent=r.status+': '+r.name;configMessage('Output folder read/write check passed.');}
-  catch(e){configMessage('Output test failed: '+e.message,true);}
-});
-$('testConfiguration').addEventListener('click',async()=>{
-  try{
-    const response=await fetch('/api/health',{cache:'no-store'});
-    const data=await response.json();
-    if(!response.ok||!data.ok)throw Error('Backend returned HTTP '+response.status);
-    $('configSpeechModel').value=data.transcriptionModel||'Not reported';
-    $('configAnalysisModel').value=data.analysisModel||'Not reported';
-    if(['gemini','openai','amazon'].includes(data.transcriptionProvider))$('configSpeechProvider').value=data.transcriptionProvider;
-    if(['gemini','openai'].includes(data.analysisProvider))$('configAnalysisProvider').value=data.analysisProvider;
-    configMessage('Backend checked: '+(data.engineConfigured?'provider keys configured':'provider keys missing')+
-      '; '+(data.rateLimitConfigured?'rate limiter configured':'rate limiter missing')+
-      '. Provider connectivity requires a real processing request.');
-  }catch(e){configMessage('Backend health check failed: '+e.message,true);}
-});
-async function autoSaveConfiguredOutput(){
-  if($('configOutputType').value!=='local')return;
-  try{
+function queueMessage(message){$('queueStatus').textContent=message;}
+function renderQueue(items){
+  $('queueCount').textContent=String(items.length);
+  const list=$('queueItems');
+  list.replaceChildren();
+  items.slice(0,12).forEach(item=>{
+    const row=document.createElement('div');row.className='queue-item';
+    const name=document.createElement('span');name.textContent=item.entry.relative;
+    const state=document.createElement('small');state.textContent='Queued';
+    row.append(name,state);list.append(row);
+  });
+}
+async function persistConfiguredOutput(){
+  if($('configOutputType').value==='local'){
     const result=await saveToLocalFolder(exportPackage());
-    notice('Analysis complete. Intelligence package saved to '+result.path);
-    status('qa','done','Local output written');
-  }catch(e){
-    notice('Analysis complete but local output save failed: '+e.message+'. JSON download is still available.','error');
-    status('qa','bad','Local output save failed');
+    return {description:'Saved transcript, intelligence and evidence to '+result.path};
   }
+  if($('configOutputType').value==='download'){
+    download(JSON.stringify(exportPackage(),null,2),'application/json','QA_handoff.json');
+    return {description:'Complete. Combined JSON download requested; results are available in Interaction Intelligence.'};
+  }
+  throw Error('The selected output adapter is not connected.');
+}
+async function scanConfiguredInput(){
+  if(autoScanBusy||busy||pendingAutoKey)return;
+  const configured=configValues();
+  if(configured.input!=='local'){
+    queueMessage('Manual upload is active. No automatic folder scanning.');
+    return;
+  }
+  if(configured.output!=='local'){
+    queueMessage('Automatic folder processing requires a local output folder.');
+    return;
+  }
+  if(!localFoldersSupported()){
+    queueMessage('Automatic local scanning is supported only in desktop Edge or Chrome.');
+    return;
+  }
+  if(automaticSessionCount>=AUTO_SESSION_LIMIT){
+    queueMessage('Session processing limit reached ('+AUTO_SESSION_LIMIT+' recordings). Reopen the application to continue.');
+    return;
+  }
+  autoScanBusy=true;
+  try{
+    const input=await getFolder('input'),output=await getFolder('output');
+    if(!input||!output){queueMessage('Choose both folders in Configuration, then Save Settings.');return;}
+    const permissionInput=await input.queryPermission({mode:'read'});
+    const permissionOutput=await output.queryPermission({mode:'readwrite'});
+    if(permissionInput!=='granted'||permissionOutput!=='granted'){
+      queueMessage('Folder permission needs renewal. Select both folders in Configuration to grant access.');
+      return;
+    }
+    const found=await listAudioFiles();
+    const records=ledger();
+    const pending=[];
+    for(const entry of found.files){
+      const audio=await entry.handle.getFile();
+      const key=entry.relative+'|'+audio.size+'|'+audio.lastModified;
+      const previous=records[key];
+      if(previous?.status==='completed'||previous?.status==='failed'&&Date.now()<(previous.retryAfter||0))continue;
+      if(audio.size>MAX){
+        markAutoFailed(key,'Audio exceeds 24 MB POC upload limit.');
+        continue;
+      }
+      pending.push({entry,audio,key});
+    }
+    renderQueue(pending);
+    if(!pending.length){
+      queueMessage('Folder checked. No new recordings waiting.');
+      return;
+    }
+    const next=pending[0];
+    queueMessage('Processing '+next.entry.relative+' automatically. '+pending.length+' file(s) waiting.');
+    pick(next.audio);
+    try{
+      const sidecar=await readMetadataSidecar(next.entry);
+      if(sidecar){
+        const fields=metadataFromJson(sidecar);
+        for(const id of metadataIds)if(fields[id]){
+          $(id).value=fields[id];setOrigin(id,'From local recording metadata',true);
+        }
+        $('metadataState').textContent='Metadata loaded from accompanying JSON';
+      }
+    }catch(e){
+      queueMessage('Metadata sidecar could not be read: '+e.message+'. Processing with unassigned metadata.');
+    }
+    automaticSessionCount++;
+    const result=await processRecording({automatic:true});
+    if(result.state==='done'){
+      markAutoCompleted(next.key);
+      queueMessage('Completed '+next.entry.relative+'. Next recording will be picked up automatically.');
+    }else if(result.state==='needs_review'){
+      pendingAutoKey=next.key;
+      queueMessage('Speaker review required for '+next.entry.relative+'. Processing paused until reviewed.');
+    }else{
+      markAutoFailed(next.key,result.error||result.state);
+      queueMessage('Needs attention: '+next.entry.relative+' — '+(result.error||result.state)+'. Next scan will continue with other files.');
+    }
+  }catch(e){queueMessage('Automatic scan failed: '+e.message);}
+  finally{autoScanBusy=false;}
 }
 loadPOCConfiguration();
+setInterval(()=>{scanConfiguredInput().catch(e=>queueMessage(e.message));},AUTO_SCAN_INTERVAL_MS);
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden)scanConfiguredInput().catch(e=>queueMessage(e.message));
+});
+scanConfiguredInput().catch(e=>queueMessage(e.message));
 
 health();
