@@ -54,6 +54,8 @@ function meta(){return {conversationId:$('conversationId').value.trim(),agentNam
 function metadataChanged(){
   if(!analysis)return;
   analysis=null;$('resultsPanel').hidden=true;syncNavigation();
+  if(transcription)renderSpeakers();
+  progressStage(3,'Metadata changed','Re-run AI analysis to include the updated interaction metadata.','Needs analysis');
   status('llm','','Metadata changed; run analysis again');
   status('qa','','Re-analyze before QA export');
 }
@@ -235,7 +237,7 @@ $('transcribeBtn').addEventListener('click',()=>{processRecording().catch(e=>not
 function roleReady(){const r=Object.values(roles);return r.length>0&&r.every(x=>['Agent','Customer','Other'].includes(x))&&r.includes('Agent')&&r.includes('Customer');}
 function renderSpeakers(){
   $('speakerMap').innerHTML=transcription.speakerIds.map((s,i)=>`<div class="speaker-card"><b>Speaker ${safe(s)}</b><select data-speaker="${safe(s)}"><option value="">Select role…</option>${['Agent','Customer','Other'].map(r=>`<option value="${r}" ${roles[s]===r?'selected':''}>${r}</option>`).join('')}</select></div>`).join('');
-  const needsManualReview=roleSource==='needs_human_review'||roleSource==='human_confirmed'&&!analysis;
+  const needsManualReview=roleSource==='needs_human_review'||roleSource==='human_confirmed'&&!analysis||(!analysis&&roleReady()&&!busy);
   $('analyzeBtn').hidden=!needsManualReview;
   $('analyzeBtn').disabled=!roleReady()||busy;
   $('speakerHint').textContent=roleSource==='transcript_inference_unverified'
