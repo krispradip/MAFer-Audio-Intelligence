@@ -1,0 +1,26 @@
+name: EKS Audio Intelligence source validation
+on:
+  push:
+    branches:
+      - corporate/eks-audio-intelligence
+  pull_request:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install runtime dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate EKS entrypoint and runtime files
+        run: |
+          npm run check:eks
+          node --check src/processing-guard.js
+          node --check src/publish.js
+          node --check src/enterprise-ai.js
+          node --check public/app.js
+          node --check public/local-folders.js
+      - name: Run contract and API regression tests
+        run: npm test
