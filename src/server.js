@@ -3,10 +3,10 @@ import {readFile} from 'node:fs/promises';
 import {dirname,extname,resolve,sep} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {S3Client,ListObjectsV2Command} from '@aws-sdk/client-s3';
-import {TranscribeClient} from '@aws-sdk/client-transcribe';
 import {handle} from '../worker.mjs';
 import {createProcessingGuard} from './processing-guard.js';
 import {createS3Processor} from './s3-processor.js';
+import {publishManualPackage} from './publish.js';
 
 // Same Node.js 24 EKS pattern as corporate MAFerLens: serve public/ and APIs on 8080.
 const PUBLIC_DIR=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
@@ -86,7 +86,9 @@ export function createAppServer(rawEnv=process.env){
       });
       const path=new URL(request.url).pathname;
       let reply;
-      if(path==='/readyz'&&request.method==='GET')reply=responseJson(requiredReady(env),requiredReady(env).ready?200:503);
+      if(path==='/readyz'&&request.method==='GET'){
+        const ready=requiredReady(env);reply=responseJson(ready,ready.ready?200:503);
+      }
       else if(path==='/api/livez'&&request.method==='GET')reply=responseJson({ok:true,service:'mafer-audio-intelligence'});
       else if(path==='/api/config'&&request.method==='GET')reply=responseJson({ok:true,config:publicConfig(env)});
       else if(path==='/api/operations'&&request.method==='GET')reply=responseJson({ok:true,operations:processor.state});
@@ -97,11 +99,23 @@ export function createAppServer(rawEnv=process.env){
           try{
             const s3=new S3Client({region});
             await Promise.all([env.S3_INPUT_BUCKET,env.S3_OUTPUT_BUCKET].map(Bucket=>
-              s3.send(new ListObjectsV2Command({Bucket,MaxKeys:1}))));
+              s3.send(new ListObjectsV2Command({Bucket,MaxKeys:1,
+                Prefix:Bucket===env.S3_INPUT_BUCKET?(env.S3_INPUT_PREFIX||'01_Incoming/'):(env.S3_OUTPUT_PREFIX||'03_Completed/')}))));
             s3.destroy();
             reply=responseJson({ok:true,s3:'list_access_verified',region,
               transcribe:'configured_not_tested',enterpriseAI:'configured_not_tested'});
           }catch(error){reply=responseJson({ok:false,s3:'connection_failed',code:error.name||'UNKNOWN'},503);}
+        }
+      }else if(path==='/api/publish'&&request.method==='POST'){
+        const submittedOrigin=request.headers.get('origin');
+        if(submittedOrigin&&submittedOrigin!==origin)reply=responseJson({ok:false,error:{code:'ORIGIN_REJECTED',message:'Cross-origin processing blocked.'}},403);
+        else {
+          try{
+            const raw=Buffer.concat(chunks).toString('utf8');
+            if(raw.length>300000)throw Error('Output JSON exceeds the allowed size.');
+            const value=await publishManualPackage(JSON.parse(raw),env);
+            reply=responseJson({ok:true,...value});
+          }catch(error){reply=responseJson({ok:false,error:{code:'PUBLISH_FAILED',message:String(error.message||'Unable to save output').slice(0,230)}},422);}
         }
       }else if(path.startsWith('/api/')&&request.method==='POST'){
         const submittedOrigin=request.headers.get('origin');
