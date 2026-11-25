@@ -1,0 +1,97 @@
+# Corporate deployment template - align namespace, registry, identity, ingress,
+# probes, Vault integration and network policies with existing MAFerLens DevOps process.
+# Placeholder values are intentionally NOT valid production settings.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mafer-audio-intelligence-config
+  namespace: REPLACE_NAMESPACE
+data:
+  NODE_ENV: "production"
+  PORT: "8080"
+  PUBLIC_ORIGIN: "https://REPLACE_APPROVED_INTERNAL_HOST"
+  AWS_REGION: "REPLACE_APPROVED_AWS_REGION"
+  TRANSCRIPTION_PROVIDER: "amazon"
+  ANALYSIS_PROVIDER: "enterprise"
+  ANALYSIS_MODEL: "gpt-4o"
+  ENTERPRISE_AI_ENDPOINT: "https://REPLACE_APPROVED_APIM_HOST/foundry-customer-care-prod/openai/v1/chat/completions"
+  S3_PROCESS_ENABLED: "true"
+  S3_INPUT_BUCKET: "REPLACE_APPROVED_INPUT_BUCKET"
+  S3_INPUT_PREFIX: "01_Incoming/"
+  S3_OUTPUT_BUCKET: "REPLACE_APPROVED_OUTPUT_BUCKET"
+  S3_OUTPUT_PREFIX: "03_Completed/"
+  S3_SCAN_INTERVAL_SECONDS: "90"
+  S3_MAX_BATCH: "3"
+  TRANSCRIBE_LANGUAGE_MODE: "auto"
+  MAX_SPEAKERS: "5"
+  APP_REQUEST_LIMIT_PER_MINUTE: "40"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mafer-audio-intelligence
+  namespace: REPLACE_NAMESPACE
+spec:
+  replicas: 1 # Poller is single-instance until external queue/locking exists.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: mafer-audio-intelligence}
+  template:
+    metadata:
+      labels: {app: mafer-audio-intelligence}
+    spec:
+      # DevOps to bind this service account to an approved IAM role using
+      # EKS Pod Identity or IRSA. Do not add AWS access keys.
+      serviceAccountName: mafer-audio-intelligence
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: mafer-audio-intelligence
+          image: REPLACE_CORPORATE_REGISTRY/mafer-audio-intelligence:REPLACE_IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8080}
+          envFrom:
+            - configMapRef: {name: mafer-audio-intelligence-config}
+          env:
+            - name: ENTERPRISE_AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mafer-audio-intelligence-secrets
+                  key: ENTERPRISE_AI_API_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: "250m", memory: "512Mi"}
+            limits: {cpu: "2", memory: "2Gi"}
+          livenessProbe:
+            httpGet: {path: /api/livez, port: http}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          startupProbe:
+            httpGet: {path: /api/livez, port: http}
+            failureThreshold: 12
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mafer-audio-intelligence
+  namespace: REPLACE_NAMESPACE
+spec:
+  type: ClusterIP
+  selector: {app: mafer-audio-intelligence}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+# Ingress, IdP and Vault secret injection must be supplied by corporate DevOps.
+# Do not deploy the service publicly or process customer calls before approval.
