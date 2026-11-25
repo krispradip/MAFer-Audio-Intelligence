@@ -1,5 +1,7 @@
 import {geminiTranscribe,geminiAnalyze,geminiIdentifySpeakers} from './gemini-provider.mjs';
 import {SPEAKER_ROLE_PROMPT,normalizeSpeakerRoles} from './speaker-roles.mjs';
+import {amazonTranscribeUpload} from './src/aws-transcribe.js';
+import {enterpriseChatJSON} from './src/enterprise-ai.js';
 /** MAFer Audio Intelligence live MVP. No synthetic responses or persistent customer data. */
 export const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
 const OPENAI = 'https://api.openai.com/v1';
@@ -93,12 +95,15 @@ function transcriptionProvider(env){return env.TRANSCRIPTION_PROVIDER||'gemini';
 function analysisProvider(env){return env.ANALYSIS_PROVIDER||'gemini';}
 function configured(env,kind){
   const selected=kind==='transcribe'?transcriptionProvider(env):analysisProvider(env);
-  return (selected==='gemini'&&!!env.GEMINI_API_KEY)||(selected==='openai'&&!!env.OPENAI_API_KEY);
+  return (selected==='gemini'&&!!env.GEMINI_API_KEY)||
+    (selected==='openai'&&!!env.OPENAI_API_KEY)||
+    (kind==='transcribe'&&selected==='amazon'&&!!env.AWS_REGION&&!!env.S3_INPUT_BUCKET&&!!env.S3_OUTPUT_BUCKET)||
+    (kind!=='transcribe'&&selected==='enterprise'&&!!env.ENTERPRISE_AI_ENDPOINT&&!!env.ENTERPRISE_AI_API_KEY&&!String(env.ENTERPRISE_AI_API_KEY).startsWith('vault:'));
 }
 
 async function identifySpeakers(request,env){
   const adapter=analysisProvider(env);
-  if(!['gemini','openai'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported speaker intelligence provider.');
+  if(!['gemini','openai','enterprise'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported speaker intelligence provider.');
   if(!configured(env,'analyze'))return fail(503,'NOT_CONFIGURED','The configured intelligence provider is not ready.');
   if(Number(request.headers.get('content-length')||0)>190000)return fail(413,'TOO_LONG','Transcript exceeds the speaker identification size limit.');
   if(!(request.headers.get('content-type')||'').includes('application/json'))
@@ -114,6 +119,9 @@ async function identifySpeakers(request,env){
   if(adapter==='gemini'){
     const result=await geminiIdentifySpeakers(segments,env,SPEAKER_ROLE_PROMPT);
     raw=result.raw;model=result.model;usage=result.usage;
+  }else if(adapter==='enterprise'){
+    raw=await enterpriseChatJSON({env,model:env.ANALYSIS_MODEL||'gpt-4o',system:SPEAKER_ROLE_PROMPT,user:{segments:subset},maxTokens:2048});
+    model=env.ANALYSIS_MODEL||'gpt-4o';
   }else{
     const result=await provider(OPENAI+'/chat/completions',env.OPENAI_API_KEY,{
       method:'POST',headers:{'content-type':'application/json'},
@@ -130,8 +138,8 @@ async function identifySpeakers(request,env){
 
 async function transcribe(request,env){
   const adapter=transcriptionProvider(env);
-  if(!['gemini','openai'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported transcription provider configured.');
-  if(!configured(env,'transcribe'))return fail(503,'NOT_CONFIGURED',adapter==='gemini'?'GEMINI_API_KEY is missing from Cloudflare secrets.':'OPENAI_API_KEY is missing from Cloudflare secrets.');
+  if(!['gemini','openai','amazon'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported transcription provider configured.');
+  if(!configured(env,'transcribe'))return fail(503,'NOT_CONFIGURED','Transcription runtime settings or provider access are missing.');
   const declared=Number(request.headers.get('content-length')||0);
   if(declared>MAX_AUDIO_BYTES+1024*1024)return fail(413,'TOO_LARGE','Recording exceeds the 24 MB upload limit.');
   const content=request.headers.get('content-type')||'';
@@ -147,6 +155,8 @@ async function transcribe(request,env){
   if(adapter==='gemini'){
     try{providerResult=await geminiTranscribe(audio,requestedLang,env);}
     catch(e){e.stage=e.stage||'gemini-transcription';throw e;}
+  }else if(adapter==='amazon'){
+    providerResult=await amazonTranscribeUpload(audio,requestedLang,env);
   }else{
     const form=new FormData();form.append('file',audio,audio.name);
     form.append('model',env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize');
@@ -161,8 +171,8 @@ async function transcribe(request,env){
 }
 async function analyze(request,env){
   const adapter=analysisProvider(env);
-  if(!['gemini','openai'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported intelligence provider configured.');
-  if(!configured(env,'analyze'))return fail(503,'NOT_CONFIGURED',adapter==='gemini'?'GEMINI_API_KEY is missing from Cloudflare secrets.':'OPENAI_API_KEY is missing from Cloudflare secrets.');
+  if(!['gemini','openai','enterprise'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported intelligence provider configured.');
+  if(!configured(env,'analyze'))return fail(503,'NOT_CONFIGURED','Enterprise AI endpoint or provider credentials are not configured.');
   if(Number(request.headers.get('content-length')||0)>190000)return fail(413,'TOO_LONG','Transcript too long for this MVP.');
   if(!(request.headers.get('content-type')||'').includes('application/json'))return fail(415,'INVALID_CONTENT_TYPE','JSON required.');
   const verified=validateAnalysisInput(await request.json());
@@ -170,6 +180,11 @@ async function analyze(request,env){
   if(adapter==='gemini'){
     const result=await geminiAnalyze(verified,env,SYSTEM,normalizeIntelligence);
     insights=result.intelligence;model=result.summaryModel;usage=result.usage;
+  }else if(adapter==='enterprise'){
+    const userData={metadata:verified.metadata,speakerMapping:verified.speakerMapping,speakerMappingSource:verified.speakerMappingSource,segments:verified.segments.map((s,index)=>({index,...s}))};
+    const raw=await enterpriseChatJSON({env,model:env.ANALYSIS_MODEL||'gpt-4o',system:SYSTEM,user:userData,maxTokens:Number(env.ANALYSIS_MAX_TOKENS||8192)});
+    insights=normalizeIntelligence(raw,verified.segments.length,Object.keys(verified.speakerMapping));
+    model=env.ANALYSIS_MODEL||'gpt-4o';usage=null;
   }else{
     const userData={metadata:verified.metadata,speakerMapping:verified.speakerMapping,speakerMappingSource:verified.speakerMappingSource,segments:verified.segments.map((s,index)=>({index,...s}))};
     const llm=await provider(OPENAI+'/chat/completions',env.OPENAI_API_KEY,{
@@ -187,16 +202,15 @@ async function analyze(request,env){
 }
 export async function handle(request,env={}){
   const url=new URL(request.url),path=url.pathname;
-  if(path==='/api/health' && request.method==='GET')return json({ok:true,engineConfigured:configured(env,'transcribe')&&configured(env,'analyze'),rateLimitConfigured:!!env.AUDIO_RATE_LIMITER,transcriptionProvider:transcriptionProvider(env),analysisProvider:analysisProvider(env),transcriptionModel:env.TRANSCRIPTION_MODEL||(transcriptionProvider(env)==='gemini'?'gemini-3.5-transcribe':'gpt-4o-transcribe-diarize'),analysisModel:env.ANALYSIS_MODEL||(analysisProvider(env)==='gemini'?'gemini-3.8-flash':'gpt-4o-mini'),liveCallsVerified:false});
+  if(path==='/api/health' && request.method==='GET')return json({ok:true,engineConfigured:configured(env,'transcribe')&&configured(env,'analyze'),rateLimitConfigured:!!env.AUDIO_RATE_LIMITER,transcriptionProvider:transcriptionProvider(env),analysisProvider:analysisProvider(env),transcriptionModel:env.TRANSCRIPTION_MODEL||(transcriptionProvider(env)==='amazon'?'amazon-transcribe':transcriptionProvider(env)==='gemini'?'gemini-3.5-transcribe':'gpt-4o-transcribe-diarize'),analysisModel:env.ANALYSIS_MODEL||(analysisProvider(env)==='enterprise'?'gpt-4o':analysisProvider(env)==='gemini'?'gemini-3.8-flash':'gpt-4o-mini'),liveCallsVerified:false});
   if(path.startsWith('/api/')){
     if(!['POST'].includes(request.method))return fail(405,'METHOD_NOT_ALLOWED','This API requires POST.');
-    // Prototype has no UI password. Require an active Cloudflare rate-limit binding
-    // before making any billable provider calls; additionally protect the site with
-    // Cloudflare Access / an allowlist when real customer recordings are involved.
+    // EKS runtime supplies a processing guard. Corporate ingress must enforce authentication
+    // and network access before this API receives customer recordings.
     if(!env.AUDIO_RATE_LIMITER || typeof env.AUDIO_RATE_LIMITER.limit!=='function')
-      return fail(503,'PROCESSING_GUARD_UNAVAILABLE','Audio processing guard is not configured. Deploy with the Cloudflare rate-limit binding.');
+      return fail(503,'PROCESSING_GUARD_UNAVAILABLE','Audio processing guard is not configured. Configure the EKS processing guard.');
     try{
-      const visitor=request.headers.get('CF-Connecting-IP')||'unknown';
+      const visitor=request.headers.get('CF-Connecting-IP')||'internal-eks';
       const outcome=await env.AUDIO_RATE_LIMITER.limit({key:visitor});
       if(!outcome?.success)return fail(429,'TOO_MANY_REQUESTS','Demo processing limit reached. Try again after a minute.');
     }catch{return fail(503,'PROCESSING_GUARD_UNAVAILABLE','Audio processing guard could not be verified.');}
@@ -206,10 +220,10 @@ export async function handle(request,env={}){
       if(path==='/api/analyze')return await analyze(request,env);
       return fail(404,'NOT_FOUND','Unknown API endpoint.');
     }catch(err){
-      const status=err.code==='NOT_CONFIGURED'?503:err.code==='UNSUPPORTED_AUDIO'?415:err.code==='GEMINI_429'?429:
+      const status=err.code==='NOT_CONFIGURED'||err.code==='AWS_NOT_CONFIGURED'?503:err.code==='UNSUPPORTED_AUDIO'?415:err.code==='GEMINI_429'?429:
         err.code==='GEMINI_503'?503:
         err.code?.startsWith('TRANSCRIPT_')?422:
-        err.code?.startsWith('PROVIDER_')||err.code?.startsWith('GEMINI_')?502:
+        err.code?.startsWith('PROVIDER_')||err.code?.startsWith('GEMINI_')||err.code?.startsWith('AMAZON_')?502:
         (/Invalid|missing|Confirm|No valid|Transcript|speaker|segment|object required|exceeds|long|return/.test(err.message)?422:502);
       return fail(status,text(err.code,60)||'PROCESSING_FAILED',text(err.message,270)||'Processing failed.',text(err.stage||'request-validation',60));
     }
