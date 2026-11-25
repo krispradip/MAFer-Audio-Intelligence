@@ -161,8 +161,10 @@ export function createS3Processor(env,processingEnv){
       let attempts=0;
       for(const item of files){
         if(attempts>=batchLimit)break;
+        const failureKey=join(env.S3_OUTPUT_PREFIX||'03_Completed/','_failures',fingerprint(inputBucket,item.Key,item.ETag)+'.json');
         state.current={sourceKey:item.Key,stage:'starting'};
         try{
+          if(await exists(s3,outputBucket,failureKey))continue;
           const value=await processObject(item);
           if(!value?.skipped)attempts++;
           if(value?.status==='COMPLETE')state.completed++;
@@ -171,7 +173,13 @@ export function createS3Processor(env,processingEnv){
         }catch(error){
           attempts++;
           state.failed++;
-          state.errors.unshift({key:item.Key,message:String(error.message||'Processing error').slice(0,200),at:new Date().toISOString()});
+          const reason=String(error.message||'Processing error').slice(0,200);
+          // Persist terminal failure to avoid repeatedly billing the same recording every scan.
+          try{await putJson(s3,outputBucket,failureKey,{status:'FAILED',sourceBucket:inputBucket,
+            sourceKey:item.Key,sourceETag:item.ETag,reason,at:new Date().toISOString(),
+            retryInstruction:'Investigate then remove this failure marker to retry.'},env);}
+          catch{ /* error stays visible in current pod operations state */ }
+          state.errors.unshift({key:item.Key,message:reason,at:new Date().toISOString()});
         }
         state.recent=state.recent.slice(0,20);
         state.errors=state.errors.slice(0,20);
