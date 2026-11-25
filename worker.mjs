@@ -1,10 +1,8 @@
-import {geminiTranscribe,geminiAnalyze,geminiIdentifySpeakers} from './gemini-provider.mjs';
 import {SPEAKER_ROLE_PROMPT,normalizeSpeakerRoles} from './speaker-roles.mjs';
 import {amazonTranscribeUpload} from './src/aws-transcribe.js';
 import {enterpriseChatJSON} from './src/enterprise-ai.js';
 /** MAFer Audio Intelligence live MVP. No synthetic responses or persistent customer data. */
 export const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
-const OPENAI = 'https://api.openai.com/v1';
 const ALLOWED = new Set(['mp3','wav','m4a','aac','flac','ogg','webm','mp4','mpeg','mpga']);
 const HEADER = { 'content-type':'application/json; charset=utf-8', 'cache-control':'no-store', 'x-content-type-options':'nosniff', 'referrer-policy':'no-referrer' };
 const json = (body, status=200) => new Response(JSON.stringify(body), {status, headers:HEADER});
@@ -28,21 +26,7 @@ function cleanSegments(input) {
   });
 }
 function metadata(input){ const m=isObject(input)?input:{};return {conversationId:text(m.conversationId,128), agentName:text(m.agentName,120),bu:text(m.bu,80),brand:text(m.brand,80),market:text(m.market,80),language:text(m.language,40),source:text(m.source,80)||'Manual audio upload'}; }
-async function provider(url, key, options) {
-  const response=await fetch(url,{...options,headers:{Authorization:'Bearer '+key,...options.headers},redirect:'manual',signal:AbortSignal.timeout(150000)});
-  if(response.status>=300 && response.status<400) {
-    const err=new Error('Model provider returned an unexpected redirect; request not followed.');
-    err.status=response.status;err.code='PROVIDER_REDIRECT';throw err;
-  }
-  const body=await response.text(); let parsed;
-  try{parsed=JSON.parse(body)}catch{parsed=null}
-  if(!response.ok) {
-    const msg=text(parsed?.error?.message || 'Speech/LLM provider error',240);
-    const err=new Error(msg);err.status=response.status;err.code='PROVIDER_'+response.status;throw err;
-  }
-  if(!parsed) throw new Error('Provider did not return valid JSON.');
-  return parsed;
-}
+
 function validateAnalysisInput(payload){
   if(!isObject(payload)) throw new Error('JSON object required.');
   const segments=cleanSegments(payload.segments), mapping=payload.speakerMapping;
@@ -91,118 +75,92 @@ function normalizeIntelligence(response, length, speakers){
     })).filter(x=>x.value!=='Unclear'&&speakers.includes(x.speakerId)&&x.evidenceSegmentIndices.length):[]
   };
 }
-function transcriptionProvider(env){return env.TRANSCRIPTION_PROVIDER||'gemini';}
-function analysisProvider(env){return env.ANALYSIS_PROVIDER||'gemini';}
+function transcriptionProvider(env){return env.TRANSCRIPTION_PROVIDER||'amazon';}
+function analysisProvider(env){return env.ANALYSIS_PROVIDER||'enterprise';}
 function configured(env,kind){
-  const selected=kind==='transcribe'?transcriptionProvider(env):analysisProvider(env);
-  return (selected==='gemini'&&!!env.GEMINI_API_KEY)||
-    (selected==='openai'&&!!env.OPENAI_API_KEY)||
-    (kind==='transcribe'&&selected==='amazon'&&!!env.AWS_REGION&&!!env.S3_INPUT_BUCKET&&!!env.S3_OUTPUT_BUCKET)||
-    (kind!=='transcribe'&&selected==='enterprise'&&!!env.ENTERPRISE_AI_ENDPOINT&&!!env.ENTERPRISE_AI_API_KEY&&!String(env.ENTERPRISE_AI_API_KEY).startsWith('vault:'));
+  if(kind==='transcribe')return transcriptionProvider(env)==='amazon'&&Boolean(
+    (env.AWS_REGION||env.AWS_DEFAULT_REGION)&&env.S3_INPUT_BUCKET&&env.S3_OUTPUT_BUCKET);
+  return analysisProvider(env)==='enterprise'&&Boolean(
+    env.ENTERPRISE_AI_ENDPOINT&&env.ENTERPRISE_AI_API_KEY&&
+    !String(env.ENTERPRISE_AI_API_KEY).startsWith('vault:'));
 }
-
 async function identifySpeakers(request,env){
-  const adapter=analysisProvider(env);
-  if(!['gemini','openai','enterprise'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported speaker intelligence provider.');
-  if(!configured(env,'analyze'))return fail(503,'NOT_CONFIGURED','The configured intelligence provider is not ready.');
-  if(Number(request.headers.get('content-length')||0)>190000)return fail(413,'TOO_LONG','Transcript exceeds the speaker identification size limit.');
+  if(analysisProvider(env)!=='enterprise')return fail(503,'INVALID_PROVIDER','Corporate intelligence requires enterprise APIM.');
+  if(!configured(env,'analyze'))return fail(503,'NOT_CONFIGURED','Enterprise APIM connection is not configured.');
+  if(Number(request.headers.get('content-length')||0)>190000)
+    return fail(413,'TOO_LONG','Transcript exceeds the speaker identification size limit.');
   if(!(request.headers.get('content-type')||'').includes('application/json'))
     return fail(415,'INVALID_CONTENT_TYPE','JSON required.');
   const payload=await request.json(),segments=cleanSegments(payload?.segments);
-  if(JSON.stringify(segments).length>140000)return fail(413,'TOO_LONG','Transcript exceeds the speaker identification size limit.');
-  if(new Set(segments.map(s=>s.speakerId)).size<2){
-    return json({ok:true,...normalizeSpeakerRoles({},segments),model:null,reason:'At least two distinct speakers required for role inference.'});
-  }
-  let raw,model,usage=null;
+  if(JSON.stringify(segments).length>140000)
+    return fail(413,'TOO_LONG','Transcript exceeds the speaker identification size limit.');
+  if(new Set(segments.map(s=>s.speakerId)).size<2)
+    return json({ok:true,...normalizeSpeakerRoles({},segments),model:null,
+      reason:'At least two distinct speakers are required for role inference.'});
   const subset=segments.map((s,index)=>({index,speakerId:s.speakerId,text:s.text}))
     .filter((s,i)=>i<80||i>=segments.length-20);
-  if(adapter==='gemini'){
-    const result=await geminiIdentifySpeakers(segments,env,SPEAKER_ROLE_PROMPT);
-    raw=result.raw;model=result.model;usage=result.usage;
-  }else if(adapter==='enterprise'){
-    raw=await enterpriseChatJSON({env,model:env.ANALYSIS_MODEL||'gpt-4o',system:SPEAKER_ROLE_PROMPT,user:{segments:subset},maxTokens:2048});
-    model=env.ANALYSIS_MODEL||'gpt-4o';
-  }else{
-    const result=await provider(OPENAI+'/chat/completions',env.OPENAI_API_KEY,{
-      method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({model:env.ANALYSIS_MODEL||'gpt-4o-mini',temperature:0,
-        response_format:{type:'json_object'},max_tokens:2048,
-        messages:[{role:'system',content:SPEAKER_ROLE_PROMPT},{role:'user',content:JSON.stringify({segments:subset})}]})
-    });
-    try{raw=JSON.parse(result.choices?.[0]?.message?.content||'');}
-    catch{const e=new Error('Speaker classification returned invalid JSON.');e.code='ROLE_INVALID_RESPONSE';e.stage='speaker-identification';throw e;}
-    model=env.ANALYSIS_MODEL||'gpt-4o-mini';usage=result.usage||null;
-  }
-  return json({ok:true,...normalizeSpeakerRoles(raw,segments),model,usage});
+  const model=env.ANALYSIS_MODEL||'gpt-4o';
+  const raw=await enterpriseChatJSON({
+    env,model,system:SPEAKER_ROLE_PROMPT,user:{segments:subset},maxTokens:2048
+  });
+  return json({ok:true,...normalizeSpeakerRoles(raw,segments),model,usage:null});
 }
 
 async function transcribe(request,env){
-  const adapter=transcriptionProvider(env);
-  if(!['gemini','openai','amazon'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported transcription provider configured.');
-  if(!configured(env,'transcribe'))return fail(503,'NOT_CONFIGURED','Transcription runtime settings or provider access are missing.');
+  if(transcriptionProvider(env)!=='amazon')
+    return fail(503,'INVALID_PROVIDER','Corporate transcription requires Amazon Transcribe.');
+  if(!configured(env,'transcribe'))
+    return fail(503,'NOT_CONFIGURED','Amazon Transcribe S3 settings are incomplete.');
   const declared=Number(request.headers.get('content-length')||0);
-  if(declared>MAX_AUDIO_BYTES+1024*1024)return fail(413,'TOO_LARGE','Recording exceeds the 24 MB upload limit.');
+  if(declared>MAX_AUDIO_BYTES+1024*1024)
+    return fail(413,'TOO_LARGE','Recording exceeds the 24 MB upload limit.');
   const content=request.headers.get('content-type')||'';
-  if(!content.toLowerCase().startsWith('multipart/form-data'))return fail(415,'INVALID_CONTENT_TYPE','Upload multipart/form-data audio.');
+  if(!content.toLowerCase().startsWith('multipart/form-data'))
+    return fail(415,'INVALID_CONTENT_TYPE','Upload multipart/form-data audio.');
   const incoming=await request.formData(),audio=incoming.get('audio');
-  if(!audio||typeof audio.name!=='string'||!finite(audio.size)||!audio.size)return fail(400,'MISSING_AUDIO','Select an audio recording.');
+  if(!audio||typeof audio.name!=='string'||!finite(audio.size)||!audio.size)
+    return fail(400,'MISSING_AUDIO','Select an audio recording.');
   if(audio.size>MAX_AUDIO_BYTES)return fail(413,'TOO_LARGE','Maximum supported file size is 24 MB.');
   const ext=audio.name.split('.').pop().toLowerCase();
-  if(!ALLOWED.has(ext)||((audio.type||'')&&!audio.type.startsWith('audio/')&&!['video/mp4','application/octet-stream'].includes(audio.type)))
-    return fail(415,'UNSUPPORTED_AUDIO','Unsupported audio file. Use MP3, WAV, M4A, AAC, FLAC, OGG or WebM.');
+  if(!ALLOWED.has(ext)||((audio.type||'')&&!audio.type.startsWith('audio/')&&
+    !['video/mp4','application/octet-stream'].includes(audio.type)))
+    return fail(415,'UNSUPPORTED_AUDIO','Unsupported audio format.');
   const requestedLang=text(incoming.get('language'),12);
-  let providerResult;
-  if(adapter==='gemini'){
-    try{providerResult=await geminiTranscribe(audio,requestedLang,env);}
-    catch(e){e.stage=e.stage||'gemini-transcription';throw e;}
-  }else if(adapter==='amazon'){
-    providerResult=await amazonTranscribeUpload(audio,requestedLang,env);
-  }else{
-    const form=new FormData();form.append('file',audio,audio.name);
-    form.append('model',env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize');
-    form.append('response_format','diarized_json');form.append('chunking_strategy','auto');
-    if(['en','ar'].includes(requestedLang))form.append('language',requestedLang);
-    const result=await provider(OPENAI+'/audio/transcriptions',env.OPENAI_API_KEY,{method:'POST',body:form});
-    providerResult={segments:result.segments,language:text(result.language||'',30)||'Unverified',provider:{transcriptionModel:env.TRANSCRIPTION_MODEL||'gpt-4o-transcribe-diarize'}};
-  }
-  let segments;try{segments=cleanSegments(providerResult.segments);}catch(e){e.stage=e.stage||'timestamp-validation';throw e;}
-  return json({ok:true,transcriptSchemaVersion:'1.0',segments,language:providerResult.language||'Auto-detected',
-    provider:providerResult.provider,speakerIds:[...new Set(segments.map(s=>s.speakerId))],noSpeech:false});
+  const result=await amazonTranscribeUpload(audio,requestedLang,env);
+  let segments;
+  try{segments=cleanSegments(result.segments);}
+  catch(e){e.stage=e.stage||'timestamp-validation';throw e;}
+  return json({ok:true,transcriptSchemaVersion:'1.0',segments,
+    language:result.language||'Auto-detected',
+    provider:result.provider,speakerIds:[...new Set(segments.map(s=>s.speakerId))],noSpeech:false});
 }
+
 async function analyze(request,env){
-  const adapter=analysisProvider(env);
-  if(!['gemini','openai','enterprise'].includes(adapter))return fail(503,'INVALID_PROVIDER','Unsupported intelligence provider configured.');
-  if(!configured(env,'analyze'))return fail(503,'NOT_CONFIGURED','Enterprise AI endpoint or provider credentials are not configured.');
-  if(Number(request.headers.get('content-length')||0)>190000)return fail(413,'TOO_LONG','Transcript too long for this MVP.');
-  if(!(request.headers.get('content-type')||'').includes('application/json'))return fail(415,'INVALID_CONTENT_TYPE','JSON required.');
+  if(analysisProvider(env)!=='enterprise')
+    return fail(503,'INVALID_PROVIDER','Corporate analysis requires enterprise APIM.');
+  if(!configured(env,'analyze'))
+    return fail(503,'NOT_CONFIGURED','Enterprise APIM endpoint or credentials are missing.');
+  if(Number(request.headers.get('content-length')||0)>190000)
+    return fail(413,'TOO_LONG','Transcript too long for analysis.');
+  if(!(request.headers.get('content-type')||'').includes('application/json'))
+    return fail(415,'INVALID_CONTENT_TYPE','JSON required.');
   const verified=validateAnalysisInput(await request.json());
-  let insights,model,usage;
-  if(adapter==='gemini'){
-    const result=await geminiAnalyze(verified,env,SYSTEM,normalizeIntelligence);
-    insights=result.intelligence;model=result.summaryModel;usage=result.usage;
-  }else if(adapter==='enterprise'){
-    const userData={metadata:verified.metadata,speakerMapping:verified.speakerMapping,speakerMappingSource:verified.speakerMappingSource,segments:verified.segments.map((s,index)=>({index,...s}))};
-    const raw=await enterpriseChatJSON({env,model:env.ANALYSIS_MODEL||'gpt-4o',system:SYSTEM,user:userData,maxTokens:Number(env.ANALYSIS_MAX_TOKENS||8192)});
-    insights=normalizeIntelligence(raw,verified.segments.length,Object.keys(verified.speakerMapping));
-    model=env.ANALYSIS_MODEL||'gpt-4o';usage=null;
-  }else{
-    const userData={metadata:verified.metadata,speakerMapping:verified.speakerMapping,speakerMappingSource:verified.speakerMappingSource,segments:verified.segments.map((s,index)=>({index,...s}))};
-    const llm=await provider(OPENAI+'/chat/completions',env.OPENAI_API_KEY,{
-      method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({model:env.ANALYSIS_MODEL||'gpt-4o-mini',temperature:0,response_format:{type:'json_object'},
-        messages:[{role:'system',content:SYSTEM},{role:'user',content:JSON.stringify(userData)}]})
-    });
-    let raw;try{raw=JSON.parse(llm.choices?.[0]?.message?.content||'')}catch{throw new Error('The analysis model did not return valid JSON.');}
-    insights=normalizeIntelligence(raw,verified.segments.length,Object.keys(verified.speakerMapping));
-    model=env.ANALYSIS_MODEL||'gpt-4o-mini';usage=llm.usage||null;
-  }
-  return json({ok:true,outputSchemaVersion:'1.1',analysisSource:'Transcript evidence only',summaryModel:model,
-    metadata:verified.metadata,speakerMapping:verified.speakerMapping,speakerMappingSource:verified.speakerMappingSource,segments:verified.segments,
-    intelligence:insights,usage:usage||null,generatedAt:new Date().toISOString()});
+  const model=env.ANALYSIS_MODEL||'gpt-4o';
+  const userData={metadata:verified.metadata,speakerMapping:verified.speakerMapping,
+    speakerMappingSource:verified.speakerMappingSource,
+    segments:verified.segments.map((s,index)=>({index,...s}))};
+  const raw=await enterpriseChatJSON({env,model,system:SYSTEM,user:userData,
+    maxTokens:Number(env.ANALYSIS_MAX_TOKENS||8192)});
+  const insights=normalizeIntelligence(raw,verified.segments.length,Object.keys(verified.speakerMapping));
+  return json({ok:true,outputSchemaVersion:'1.1',analysisSource:'Transcript evidence only',
+    summaryModel:model,metadata:verified.metadata,speakerMapping:verified.speakerMapping,
+    speakerMappingSource:verified.speakerMappingSource,segments:verified.segments,
+    intelligence:insights,usage:null,generatedAt:new Date().toISOString()});
 }
+
 export async function handle(request,env={}){
   const url=new URL(request.url),path=url.pathname;
-  if(path==='/api/health' && request.method==='GET')return json({ok:true,engineConfigured:configured(env,'transcribe')&&configured(env,'analyze'),rateLimitConfigured:!!env.AUDIO_RATE_LIMITER,transcriptionProvider:transcriptionProvider(env),analysisProvider:analysisProvider(env),transcriptionModel:env.TRANSCRIPTION_MODEL||(transcriptionProvider(env)==='amazon'?'amazon-transcribe':transcriptionProvider(env)==='gemini'?'gemini-3.5-transcribe':'gpt-4o-transcribe-diarize'),analysisModel:env.ANALYSIS_MODEL||(analysisProvider(env)==='enterprise'?'gpt-4o':analysisProvider(env)==='gemini'?'gemini-3.8-flash':'gpt-4o-mini'),liveCallsVerified:false});
+  if(path==='/api/health' && request.method==='GET')return json({ok:true,engineConfigured:configured(env,'transcribe')&&configured(env,'analyze'),rateLimitConfigured:!!env.AUDIO_RATE_LIMITER,transcriptionProvider:transcriptionProvider(env),analysisProvider:analysisProvider(env),transcriptionModel:'amazon-transcribe',analysisModel:env.ANALYSIS_MODEL||'gpt-4o',liveCallsVerified:false});
   if(path.startsWith('/api/')){
     if(!['POST'].includes(request.method))return fail(405,'METHOD_NOT_ALLOWED','This API requires POST.');
     // EKS runtime supplies a processing guard. Corporate ingress must enforce authentication
@@ -210,9 +168,9 @@ export async function handle(request,env={}){
     if(!env.AUDIO_RATE_LIMITER || typeof env.AUDIO_RATE_LIMITER.limit!=='function')
       return fail(503,'PROCESSING_GUARD_UNAVAILABLE','Audio processing guard is not configured. Configure the EKS processing guard.');
     try{
-      const visitor=request.headers.get('CF-Connecting-IP')||'internal-eks';
+      const visitor='internal-eks';
       const outcome=await env.AUDIO_RATE_LIMITER.limit({key:visitor});
-      if(!outcome?.success)return fail(429,'TOO_MANY_REQUESTS','Demo processing limit reached. Try again after a minute.');
+      if(!outcome?.success)return fail(429,'TOO_MANY_REQUESTS','Processing rate limit reached. Try again later.');
     }catch{return fail(503,'PROCESSING_GUARD_UNAVAILABLE','Audio processing guard could not be verified.');}
     try{
       if(path==='/api/transcribe')return await transcribe(request,env);
@@ -220,10 +178,11 @@ export async function handle(request,env={}){
       if(path==='/api/analyze')return await analyze(request,env);
       return fail(404,'NOT_FOUND','Unknown API endpoint.');
     }catch(err){
-      const status=err.code==='NOT_CONFIGURED'||err.code==='AWS_NOT_CONFIGURED'?503:err.code==='UNSUPPORTED_AUDIO'?415:err.code==='GEMINI_429'?429:
-        err.code==='GEMINI_503'?503:
+      const status=err.code==='NOT_CONFIGURED'||err.code==='AWS_NOT_CONFIGURED'?503:
+        err.code==='UNSUPPORTED_AUDIO'?415:err.status===429?429:
         err.code?.startsWith('TRANSCRIPT_')?422:
-        err.code?.startsWith('PROVIDER_')||err.code?.startsWith('GEMINI_')||err.code?.startsWith('AMAZON_')?502:
+        err.code?.startsWith('AMAZON_')||err.code?.startsWith('TRANSCRIBE_')?502:
+        Number.isInteger(err.status)&&err.status>=400&&err.status<=599?err.status:
         (/Invalid|missing|Confirm|No valid|Transcript|speaker|segment|object required|exceeds|long|return/.test(err.message)?422:502);
       return fail(status,text(err.code,60)||'PROCESSING_FAILED',text(err.message,270)||'Processing failed.',text(err.stage||'request-validation',60));
     }
