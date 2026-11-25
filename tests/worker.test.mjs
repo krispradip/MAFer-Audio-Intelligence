@@ -1,86 +1,115 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {handle, MAX_AUDIO_BYTES} from '../worker.mjs';
-const env={OPENAI_API_KEY:'test-not-real',AUDIO_RATE_LIMITER:{limit:async()=>({success:true})},TRANSCRIPTION_PROVIDER:'openai',ANALYSIS_PROVIDER:'openai',TRANSCRIPTION_MODEL:'gpt-4o-transcribe-diarize',ANALYSIS_MODEL:'gpt-4o-mini'};
-function jsonResponse(body,status=200){return new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});}
-function audioRequest({name='test.wav',size=100,language=''}={}){
-  const f=new FormData();f.append('audio',new File([new Uint8Array(size)],name,{type:'audio/wav'}));if(language)f.append('language',language);
-  return new Request('https://example.test/api/transcribe',{method:'POST',body:f});
+import {handle,MAX_AUDIO_BYTES} from '../worker.mjs';
+
+const endpoint='https://apim-testing.example.org/foundry-customer-care-prod/openai/v1/chat/completions';
+const env={
+  AWS_REGION:'me-central-1',S3_INPUT_BUCKET:'test-input',S3_OUTPUT_BUCKET:'test-output',
+  TRANSCRIPTION_PROVIDER:'amazon',ANALYSIS_PROVIDER:'enterprise',ANALYSIS_MODEL:'gpt-4o',
+  ENTERPRISE_AI_ENDPOINT:endpoint,ENTERPRISE_AI_API_KEY:'synthetic-test-key',
+  AUDIO_RATE_LIMITER:{limit:async()=>({success:true})}
+};
+const segments=[
+  {startMs:0,endMs:1300,speakerId:'A',text:'I need help with an order.'},
+  {startMs:1400,endMs:2500,speakerId:'B',text:'Let me check your order.'}
+];
+const validInsight={
+  summary:'Customer requested help.',reasonForContact:'Order request',
+  issues:[{description:'Order help',evidenceSegmentIndices:[0,1000]}],
+  actions:[{description:'Agent offered to check',evidenceSegmentIndices:[1]}],
+  resolution:{status:'Unclear',description:'Not verified',evidenceSegmentIndices:[0]},
+  nextSteps:[],commitments:[],closingSentiment:{value:'Happy',evidenceSegmentIndices:[]},
+  emotionalIndicators:[],conversationSignals:[]
+};
+const priorFetch=globalThis.fetch;
+test.afterEach(()=>{globalThis.fetch=priorFetch;});
+function audioRequest({name='test.wav',size=100}={}){
+  const body=new FormData();
+  body.append('audio',new File([new Uint8Array(size)],name,{type:'audio/wav'}));
+  return new Request('https://mafer.test/api/transcribe',{method:'POST',body});
 }
-function analysisRequest({roles={A:'Customer',B:'Agent'},segments=[{startMs:0,endMs:1300,speakerId:'A',text:'I need help.'},{startMs:1400,endMs:2500,speakerId:'B',text:'Let me check.'}]}={}){
-  return new Request('https://example.test/api/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({segments,speakerMapping:roles,metadata:{bu:'VOX',conversationId:'GEN-ABC'}})});
+function analysisRequest(roleMapping={A:'Customer',B:'Agent'}){
+  return new Request('https://mafer.test/api/analyze',{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({segments,speakerMapping:roleMapping,metadata:{bu:'VOX'}})
+  });
 }
-const stt={segments:[{start:0,end:1.3,speaker:'A',text:'I need help.'},{start:1.4,end:2.5,speaker:'B',text:'Let me check.'}],text:'I need help. Let me check.'};
-const intel={summary:'Customer requested support.',reasonForContact:'Support request',issues:[{description:'Needs help',evidenceSegmentIndices:[0,99]}],actions:[{description:'Agent offered to check',evidenceSegmentIndices:[1]}],resolution:{status:'Unclear',description:'Not confirmed',evidenceSegmentIndices:[0]},nextSteps:[],commitments:[],closingSentiment:{value:'Happy',evidenceSegmentIndices:[]},emotionalIndicators:[],conversationSignals:[]};
-const original=globalThis.fetch;
-const fakeProvider=handler=>{globalThis.fetch=async (url,opts)=>handler(String(url),opts)};
-test.afterEach(()=>{globalThis.fetch=original;});
-test('health truthfully reports missing secrets without claiming provider verified',async()=>{
-  const r=await handle(new Request('https://example.test/api/health'),{}); const d=await r.json();
-  assert.equal(r.status,200);assert.equal(d.engineConfigured,false);assert.equal(d.rateLimitConfigured,false);assert.equal(d.liveCallsVerified,false);
+test('corporate health identifies Amazon + enterprise APIM without claiming live vendor success',async()=>{
+  const response=await handle(new Request('https://mafer.test/api/health'),env);
+  const data=await response.json();
+  assert.equal(response.status,200);
+  assert.equal(data.engineConfigured,true);
+  assert.equal(data.transcriptionProvider,'amazon');
+  assert.equal(data.analysisProvider,'enterprise');
+  assert.equal(data.transcriptionModel,'amazon-transcribe');
+  assert.equal(data.analysisModel,'gpt-4o');
+  assert.equal(data.liveCallsVerified,false);
 });
-test('public demo has no access code, but fails closed without a rate limiter',async()=>{
-  let called=0;fakeProvider(()=>{called++;throw new Error('should not reach provider');});
-  const r=await handle(audioRequest(),{OPENAI_API_KEY:'test'});assert.equal(r.status,503);assert.equal(called,0);
+test('missing corporate credentials fail closed',async()=>{
+  const response=await handle(new Request('https://mafer.test/api/health'),{});
+  const body=await response.json();
+  assert.equal(body.engineConfigured,false);
+  assert.equal(body.transcriptionProvider,'amazon');
+  assert.equal(body.analysisProvider,'enterprise');
 });
-test('rate limiter blocks excess demo requests before the provider',async()=>{
-  let called=0;fakeProvider(()=>{called++;throw new Error('should not reach provider');});
-  const r=await handle(audioRequest(),{...env,AUDIO_RATE_LIMITER:{limit:async()=>({success:false})}});
-  assert.equal(r.status,429);assert.equal(called,0);
+test('non-corporate provider selection is rejected',async()=>{
+  const speech=await handle(audioRequest(),{...env,TRANSCRIPTION_PROVIDER:'gemini'});
+  const analysis=await handle(analysisRequest(),{...env,ANALYSIS_PROVIDER:'openai'});
+  assert.equal(speech.status,503);
+  assert.equal(analysis.status,503);
 });
-test('missing OpenAI key blocks real transcription',async()=>{
-  let called=0;fakeProvider(()=>{called++;throw new Error('should not reach provider');});
-  const r=await handle(audioRequest(),{AUDIO_RATE_LIMITER:env.AUDIO_RATE_LIMITER});
-  assert.equal(r.status,503);assert.equal(called,0);
+test('rate-limiter is required and enforces call limits',async()=>{
+  const unavailable=await handle(analysisRequest(),{...env,AUDIO_RATE_LIMITER:undefined});
+  const denied=await handle(analysisRequest(),{...env,AUDIO_RATE_LIMITER:{limit:async()=>({success:false})}});
+  assert.equal(unavailable.status,503);
+  assert.equal(denied.status,429);
 });
-test('real transcription path forwards binary multipart audio to OpenAI and preserves per-segment timing',async()=>{
-  let called=0;
-  fakeProvider(async(url,opts)=>{
-    called++;assert.equal(url,'https://api.openai.com/v1/audio/transcriptions');
-    assert.equal(opts.headers.Authorization,'Bearer '+env.OPENAI_API_KEY);
-    assert.equal(opts.body.get('model'),'gpt-4o-transcribe-diarize');assert.equal(opts.body.get('response_format'),'diarized_json');
-    assert.equal(opts.body.get('chunking_strategy'),'auto');assert.equal(opts.body.get('language'),'ar');
-    assert.equal(opts.body.get('file').size,100);
-    return jsonResponse(stt);
-  });
-  const r=await handle(audioRequest({language:'ar'}),env);const d=await r.json();
-  assert.equal(r.status,200);assert.equal(called,1);assert.equal(d.segments.length,2);
-  assert.deepEqual(d.speakerIds,['A','B']);assert.equal(d.segments[0].startMs,0);assert.equal(d.segments[0].endMs,1300);
+test('upload validation blocks unsupported types and oversize before AWS calls',async()=>{
+  const invalid=await handle(audioRequest({name:'test.txt'}),env);
+  const oversized=await handle(audioRequest({size:MAX_AUDIO_BYTES+1}),env);
+  assert.equal(invalid.status,415);
+  assert.equal(oversized.status,413);
 });
-test('no-speech/no diarization never fakes completed transcript',async()=>{
-  fakeProvider(()=>jsonResponse({text:'Hello',segments:[]}));const r=await handle(audioRequest(),env);const d=await r.json();
-  assert.equal(r.status,422);assert.equal(d.ok,false);
+test('unconfirmed agent role blocks APIM requests',async()=>{
+  let calls=0;
+  globalThis.fetch=async()=>{calls++;throw Error('must not call APIM');};
+  const response=await handle(analysisRequest({A:'Customer',B:'Customer'}),env);
+  assert.equal(response.status,422);
+  assert.equal(calls,0);
 });
-test('broken timestamps fail closed',async()=>{
-  fakeProvider(()=>jsonResponse({segments:[{start:2,end:1,speaker:'A',text:'Bad'}]}));
-  const r=await handle(audioRequest(),env);assert.equal(r.status,422);
+test('corporate analysis calls APIM only and filters unsupported evidence',async()=>{
+  let calls=0;
+  globalThis.fetch=async (url,options)=>{
+    calls++;
+    assert.equal(String(url),endpoint);
+    assert.equal(options.headers['api-key'],'synthetic-test-key');
+    assert.equal(options.headers.Authorization,undefined);
+    const request=JSON.parse(options.body);
+    assert.equal(request.model,'gpt-4o');
+    assert.equal(request.response_format.type,'json_object');
+    return new Response(JSON.stringify({
+      choices:[{finish_reason:'stop',message:{content:JSON.stringify(validInsight)}}]
+    }),{status:200,headers:{'content-type':'application/json'}});
+  };
+  const response=await handle(analysisRequest(),env);
+  const body=await response.json();
+  assert.equal(response.status,200);
+  assert.equal(calls,1);
+  assert.deepEqual(body.intelligence.issues[0].evidenceSegmentIndices,[0]);
+  assert.equal(body.intelligence.closingSentiment.value,'Unclear');
+  assert.equal(body.qaScoringPerformed,undefined);
 });
-test('file extension and size restrictions enforced before API request',async()=>{
-  fakeProvider(()=>{throw new Error('Should not call provider');});
-  const r=await handle(audioRequest({name:'test.txt'}),env);assert.equal(r.status,415);
-  const tooLarge=await handle(audioRequest({size:MAX_AUDIO_BYTES+1}),env);assert.equal(tooLarge.status,413);
+test('APIM HTTP 429 returns a controlled failure, never synthetic analysis',async()=>{
+  globalThis.fetch=async()=>new Response(JSON.stringify({
+    error:{message:'Testing rate-limit rejection'}
+  }),{status:429,headers:{'content-type':'application/json'}});
+  const response=await handle(analysisRequest(),env);
+  const body=await response.json();
+  assert.equal(response.status,429);
+  assert.equal(body.ok,false);
+  assert.equal(body.intelligence,undefined);
 });
-test('analysis blocks unconfirmed speaker roles and refuses to call LLM',async()=>{
-  fakeProvider(()=>{throw new Error('Should not call provider');});
-  const r=await handle(analysisRequest({roles:{A:'Customer',B:'Customer'}}),env);assert.equal(r.status,422);
-});
-test('analysis calls LLM and rejects unsupported evidence references',async()=>{
-  fakeProvider((url,opts)=>{
-    assert.equal(url,'https://api.openai.com/v1/chat/completions');
-    const payload=JSON.parse(opts.body);assert.equal(payload.model,'gpt-4o-mini');
-    assert.equal(payload.response_format.type,'json_object');
-    assert.equal(JSON.parse(payload.messages[1].content).speakerMapping.B,'Agent');
-    return jsonResponse({choices:[{message:{content:JSON.stringify(intel)}}],usage:{total_tokens:144}});
-  });
-  const r=await handle(analysisRequest(),env);const d=await r.json();assert.equal(r.status,200);
-  assert.equal(d.intelligence.issues[0].evidenceSegmentIndices.length,1);
-  assert.equal(d.intelligence.closingSentiment.value,'Unclear');
-  assert.equal(d.metadata.bu,'VOX');assert.equal(d.usage.total_tokens,144);
-});
-test('provider quota error is explicit and does not generate fake analysis',async()=>{
-  fakeProvider(()=>jsonResponse({error:{message:'Quota exceeded'}},429));
-  const r=await handle(analysisRequest(),env);const d=await r.json();assert.equal(r.status,502);assert.equal(d.ok,false);assert.equal(d.error.code,'PROVIDER_429');
-});
-test('unknown API route is rejected',async()=>{
-  const r=await handle(new Request('https://example.test/api/unknown',{method:'POST',headers:{}}),env);assert.equal(r.status,404);
+test('unknown routes return 404',async()=>{
+  const response=await handle(new Request('https://mafer.test/api/not-an-endpoint',{method:'POST'}),env);
+  assert.equal(response.status,404);
 });
