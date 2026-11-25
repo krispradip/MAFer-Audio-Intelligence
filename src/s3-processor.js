@@ -158,14 +158,18 @@ export function createS3Processor(env,processingEnv){
         .sort((a,b)=>new Date(a.LastModified)-new Date(b.LastModified));
       const batchLimit=Math.max(1,Math.min(25,Number(env.S3_MAX_BATCH||3)));
       state.queued=files.length;
-      for(const item of files.slice(0,batchLimit)){
+      let attempts=0;
+      for(const item of files){
+        if(attempts>=batchLimit)break;
         state.current={sourceKey:item.Key,stage:'starting'};
         try{
           const value=await processObject(item);
+          if(!value?.skipped)attempts++;
           if(value?.status==='COMPLETE')state.completed++;
           else if(value?.status==='NEEDS_SPEAKER_REVIEW')state.needsReview++;
           state.recent.unshift({key:item.Key,status:value?.status||'SKIPPED',at:new Date().toISOString()});
         }catch(error){
+          attempts++;
           state.failed++;
           state.errors.unshift({key:item.Key,message:String(error.message||'Processing error').slice(0,200),at:new Date().toISOString()});
         }
