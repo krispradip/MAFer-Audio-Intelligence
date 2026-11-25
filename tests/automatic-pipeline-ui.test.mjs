@@ -26,7 +26,10 @@ test('automatic scan is opt-in via saved folder mode and never assumes a connect
   assert.match(app,/AUTO_SESSION_LIMIT=12/);
   assert.match(app,/input\.queryPermission\(\{mode:'read'\}\)/);
   assert.match(storage,/readMetadataSidecar/);
-  assert.match(html,/value="s3" disabled/);
+  assert.match(html,/id="runtimeInputLocation"/);
+  assert.match(html,/id="runtimeOutputLocation"/);
+  assert.match(app,/async function loadCorporateRuntime/);
+  assert.match(app,/api\('publish'/);
 });
 test('progress and job queue are visible with truthful evidence limitations',()=>{
   for(const id of ['progressBar','progressTitle','progressDetail','queueCount','queueCompleted','queueFailed','queueStatus'])
