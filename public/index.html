@@ -19,7 +19,7 @@
 <option value="operations">Operations &amp; Health</option>
 <option value="configuration">Configuration</option>
 </select></div><div class="sidebar-bottom"><div class="side-box"><div class="indicator"></div><b>Real model processing</b><p>No sample interactions. No fabricated results.</p></div><small>STANDALONE SERVICE<br>QA scoring remains in QA.MAFer.AI</small></div></aside>
-<div class="workspace"><header class="topbar"><div><span class="breadcrumb">MAFer Audio Intelligence</span><span class="slash">/</span><b id="pageTitle">Audio Upload</b></div><div class="topright"><span id="engineStatus" class="engine-state">Checking service…</span><span class="release">LIVE MVP</span></div></header>
+<div class="workspace"><header class="topbar"><div><span class="breadcrumb">MAFer Audio Intelligence</span><span class="slash">/</span><b id="pageTitle">Audio Upload</b></div><div class="topright"><span id="engineStatus" class="engine-state">Checking service…</span><span class="release">CORPORATE EKS</span></div></header>
 
 <main>
 <div id="message" class="message" role="status" aria-live="polite" hidden></div>
@@ -64,14 +64,32 @@
   <p class="helper" id="queueStatus">No automatic folder configured.</p><div id="queueItems" class="queue-items" aria-live="polite"></div>
   </div></section>
 <div class="rail"><section class="panel rail-card"><div class="panel-title"><h2>Processing monitor</h2></div><div class="panel-body"><div class="statusline"><span id="sttDot" class="statusdot"></span><div><b>Speech recognition</b><small id="sttState">Not started</small></div></div><div class="statusline"><span id="rolesDot" class="statusdot"></span><div><b>Speaker identification</b><small id="rolesState">Waiting for audio</small></div></div><div class="statusline"><span id="llmDot" class="statusdot"></span><div><b>AI intelligence</b><small id="llmState">Not started</small></div></div><div class="statusline"><span id="qaDot" class="statusdot"></span><div><b>QA handoff</b><small id="qaState">No export available</small></div></div></div></section>
-<section class="panel rail-card"><div class="panel-title"><h2>Service configuration</h2></div><div class="panel-body"><p class="tiny">No access code required. The Gemini API key is held only in the Cloudflare Worker secret; calls are limited by a server-side rate-limit binding. Use non-sensitive recordings until private access is configured.</p><div class="service-detail"><span>Live processing configuration</span><strong id="protectionStatus">Checking…</strong></div><div class="service-detail"><span>Transcription model</span><strong id="sttModel">—</strong></div><div class="service-detail"><span>Analysis model</span><strong id="llmModel">—</strong></div><div class="service-detail"><span>Last request</span><strong id="lastRequest">None</strong></div><button id="refreshHealth" class="button outline fill">↻ Check configuration</button><p class="tiny">Configured status is not a claim that a provider call has succeeded. Real upload requests verify connectivity.</p></div></section>
-<section class="panel rail-card"><div class="panel-title"><h2>Processing safeguards</h2></div><div class="panel-body"><p class="small-item">✓ No synthetic transcript or summary fallback</p><p class="small-item">✓ Timestamp validation blocks invalid output</p><p class="small-item">✓ Human confirmation of speaker roles</p><p class="small-item">✓ No fabricated CRM updates or QA scores</p><p class="tiny">Audio is sent to the configured Gemini transcription service. This public demo is not approved for real customer data. Use non-sensitive test recordings only until corporate security approval.</p></div></section></div>
+<section class="panel rail-card"><div class="panel-title"><h2>Service configuration</h2></div><div class="panel-body"><p class="tiny">Credentials are resolved on the EKS server from approved Vault bindings and AWS Pod Identity. Verify corporate ingress authentication before processing real customer audio.</p><div class="service-detail"><span>Live processing configuration</span><strong id="protectionStatus">Checking…</strong></div><div class="service-detail"><span>Transcription model</span><strong id="sttModel">—</strong></div><div class="service-detail"><span>Analysis model</span><strong id="llmModel">—</strong></div><div class="service-detail"><span>Last request</span><strong id="lastRequest">None</strong></div><button id="refreshHealth" class="button outline fill">↻ Check configuration</button><p class="tiny">Configured status is not a claim that a provider call has succeeded. Real upload requests verify connectivity.</p></div></section>
+<section class="panel rail-card"><div class="panel-title"><h2>Processing safeguards</h2></div><div class="panel-body"><p class="small-item">✓ No synthetic transcript or summary fallback</p><p class="small-item">✓ Timestamp validation blocks invalid output</p><p class="small-item">✓ Human confirmation of speaker roles</p><p class="small-item">✓ No fabricated CRM updates or QA scores</p><p class="tiny">Audio is sent to the configured Amazon Transcribe service when that provider is active. Production recordings require approved IAM, ingress authentication, security and retention controls.</p></div></section></div>
 </section>
 <section id="pageConfig" class="app-page" data-page="configuration" hidden>
 <section id="configPanel" class="panel config-panel">
   <div class="panel-title"><div><span class="section-num">CONFIGURATION</span><h2>Sources, destinations & processing</h2></div><span class="pill blue">Connections</span></div>
   <div class="panel-body">
-    <p class="helper">Select where recordings come from and where completed intelligence is saved. Manual upload remains available. Folder access stays in your browser and is only granted when you select a folder.</p>
+    <p class="helper">The EKS service automatically reads recordings from its approved S3 input location and publishes completed intelligence to S3. No browser needs to remain open. Runtime connection settings are provided securely by corporate DevOps.</p>
+    <div class="config-grid" id="corporateConfiguration">
+      <div class="config-group"><h3>Input source</h3><label>S3 bucket and prefix
+        <input id="runtimeInputLocation" readonly placeholder="Reading corporate settings…"></label>
+        <p class="tiny">Automatic background scanning by the EKS service.</p>
+      </div>
+      <div class="config-group"><h3>Output destination</h3><label>S3 bucket and prefix
+        <input id="runtimeOutputLocation" readonly placeholder="Reading corporate settings…"></label>
+        <p class="tiny">BU / Brand / Market / Date / Interaction ID.</p>
+      </div>
+      <div class="config-group"><h3>Transcription</h3><label>Active provider
+        <input id="runtimeSpeechProvider" readonly></label></div>
+      <div class="config-group"><h3>Intelligence analysis</h3><label>Active provider and model
+        <input id="runtimeAnalysisProvider" readonly></label></div>
+    </div>
+    <div class="buttons"><button type="button" class="button outline" id="corporateHealthCheck">Test S3 connection</button>
+      <span class="helper" id="corporateConfigStatus">Waiting for corporate runtime configuration.</span></div>
+    <p class="tiny">The connections above are read-only. EKS runtime settings, IAM roles and Vault secrets are configured by DevOps. Editing them securely from this page requires an approved authenticated configuration store.</p>
+    <details class="local-browser-options"><summary>Optional local-folder testing (desktop Chrome/Edge only)</summary>
     <div class="config-grid">
       <div class="config-group">
         <h3>Input folder</h3>
@@ -79,7 +97,7 @@
           <select id="configInputType">
             <option value="manual">Manual upload only</option>
             <option value="local">Local HDD folder — automatic while this page is open</option>
-            <option value="s3" disabled>S3 bucket — corporate adapter not connected</option>
+            <option value="s3">S3 managed by EKS</option>
           </select>
         </label>
         <button type="button" class="button outline" id="selectInputFolder">Choose input folder</button>
@@ -102,8 +120,9 @@
     </div>
     <div class="buttons"><button type="button" class="button primary" id="saveConfiguration">Save Settings</button></div>
     <p class="helper" id="configurationStatus" role="status">Select folders once and save settings. The app will scan automatically while open.</p>
+    </details>
   </div>
 </section>
 </section>
-</main><footer>MAFer Audio Intelligence · Standalone audio processing · Real model calls · No stored interactions</footer></div></div>
+</main><footer>MAFer Audio Intelligence · Corporate EKS runtime · S3 intelligence repository</footer></div></div>
 <script type="module" src="./app.js"></script></body></html>
