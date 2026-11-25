@@ -152,7 +152,7 @@ async function deleteGeminiFile(name,key){
   try{await fetch(`${HOST}/v1beta/${name}`,{method:'DELETE',headers:{'x-goog-api-key':key},redirect:'manual',signal:AbortSignal.timeout(12000)});}catch{}
 }
 export async function geminiTranscribe(audio,requestedLanguage,env){
-  if(!env.GEMINI_API_KEY)throw failure('GEMINI_API_KEY is not configured in Cloudflare.','NOT_CONFIGURED');
+  if(!env.GEMINI_API_KEY)throw failure('GEMINI_API_KEY is not configured in the runtime environment.','NOT_CONFIGURED');
   const model=env.TRANSCRIPTION_MODEL||'gemini-3.5-transcribe';
   let file;
   try{
@@ -170,7 +170,7 @@ export async function geminiTranscribe(audio,requestedLanguage,env){
   }finally{if(file)await deleteGeminiFile(file.name,env.GEMINI_API_KEY);}
 }
 export async function geminiAnalyze(verified,env,systemInstruction,normalize){
-  if(!env.GEMINI_API_KEY)throw failure('GEMINI_API_KEY is not configured in Cloudflare.','NOT_CONFIGURED');
+  if(!env.GEMINI_API_KEY)throw failure('GEMINI_API_KEY is not configured in the runtime environment.','NOT_CONFIGURED');
   const model=env.ANALYSIS_MODEL||'gemini-3.8-flash';
   const userData={metadata:verified.metadata,speakerMapping:verified.speakerMapping,speakerMappingSource:verified.speakerMappingSource,segments:verified.segments.map((s,index)=>({index,...s}))};
   const result=await postJson(providerUrl(model),env.GEMINI_API_KEY,{
