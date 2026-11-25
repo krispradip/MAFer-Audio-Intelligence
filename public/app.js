@@ -150,7 +150,7 @@ async function health(){
     if(!r.ok||!d.ok)throw new Error('Not ready');
     $('engineStatus').textContent=!d.engineConfigured?'AI provider key not configured':!d.rateLimitConfigured?'Processing guard not configured':'Processing API configured';
     $('sttModel').textContent=d.transcriptionModel||'Unknown';$('llmModel').textContent=d.analysisModel||'Unknown';
-    $('protectionStatus').textContent=d.engineConfigured&&d.rateLimitConfigured?'Ready for live testing (not yet verified)':!d.engineConfigured?'Missing GEMINI_API_KEY secret':'Rate limiter must be deployed';
+    $('protectionStatus').textContent=d.engineConfigured&&d.rateLimitConfigured?'Runtime configured; connectivity not yet verified':!d.engineConfigured?'Corporate processing credentials or provider settings missing':'API processing guard unavailable';
     $('engineStatus').style.color=d.engineConfigured&&d.rateLimitConfigured?'#16886e':'#ba5964';
   }catch{ $('engineStatus').textContent='Backend unavailable';$('engineStatus').style.color='#ba5964';$('sttModel').textContent='Unavailable';$('llmModel').textContent='Unavailable';$('protectionStatus').textContent='Backend unavailable';}
 }
@@ -446,13 +446,17 @@ async function persistConfiguredOutput(){
     download(JSON.stringify(exportPackage(),null,2),'application/json','QA_handoff.json');
     return {description:'Complete. Combined JSON download requested; results are available in Interaction Intelligence.'};
   }
+  if($('configOutputType').value==='s3'){
+    const published=await api('publish',{headers:{'content-type':'application/json'},body:JSON.stringify(exportPackage())});
+    return {description:'Published interaction package to corporate S3: '+published.path};
+  }
   throw Error('The selected output adapter is not connected.');
 }
 async function scanConfiguredInput(){
   if(autoScanBusy||busy||pendingAutoKey)return;
   const configured=configValues();
   if(configured.input!=='local'){
-    queueMessage('Manual upload is active. No automatic folder scanning.');
+    if(configured.input!=='s3')queueMessage('Manual upload selected. EKS S3 processing operates independently.');
     return;
   }
   if(configured.output!=='local'){
@@ -531,6 +535,62 @@ async function scanConfiguredInput(){
   finally{autoScanBusy=false;}
 }
 loadPOCConfiguration();
+
+async function loadCorporateRuntime(){
+  try{
+    const response=await fetch('/api/config',{cache:'no-store'});
+    const data=await response.json();
+    if(!response.ok||!data.ok)throw Error('Runtime settings unavailable');
+    const settings=data.config||{};
+    $('runtimeInputLocation').value='s3://'+(settings.input?.bucket||'NOT CONFIGURED')+'/'+(settings.input?.prefix||'');
+    $('runtimeOutputLocation').value='s3://'+(settings.output?.bucket||'NOT CONFIGURED')+'/'+(settings.output?.prefix||'');
+    $('runtimeSpeechProvider').value=settings.transcriptionProvider||'Not configured';
+    $('runtimeAnalysisProvider').value=(settings.analysisProvider||'Not configured')+' · '+(settings.analysisModel||'No model');
+    $('corporateConfigStatus').textContent=settings.scanEnabled?
+      'S3 scan worker enabled on EKS.': 'S3 scan worker disabled in this deployment.';
+    $('configInputType').value='s3';
+    $('configOutputType').value='s3';
+  }catch(e){
+    $('corporateConfigStatus').textContent='Could not read EKS configuration: '+e.message;
+  }
+}
+$('corporateHealthCheck').addEventListener('click',async()=>{
+  $('corporateConfigStatus').textContent='Checking S3 connectivity…';
+  try{
+    const r=await fetch('/api/connections/health',{cache:'no-store'});
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw Error(d.code||d.s3||'Unable to connect');
+    $('corporateConfigStatus').textContent='S3 listing verified in '+d.region+'. Transcribe and AI calls are not verified by this check.';
+  }catch(e){$('corporateConfigStatus').textContent='S3 health check failed: '+e.message;}
+});
+async function refreshCorporateOperations(){
+  if($('configInputType').value==='local')return;
+  try{
+    const r=await fetch('/api/operations',{cache:'no-store'});
+    const data=await r.json();
+    if(!r.ok||!data.ok)return;
+    const ops=data.operations||{};
+    $('queueCount').textContent=String(ops.queued??0);
+    $('queueCompleted').textContent=String(ops.completed??0);
+    $('queueFailed').textContent=String((ops.failed??0)+(ops.needsReview??0));
+    const msg=ops.current?ops.current.stage+': '+ops.current.sourceKey:
+      'EKS S3 processor: '+(ops.status||'unknown')+
+        (ops.needsReview?' · '+ops.needsReview+' needs speaker review':'');
+    $('queueStatus').textContent=msg;
+    const list=$('queueItems');list.replaceChildren();
+    for(const row of (ops.recent||[]).slice(0,12)){
+      const el=document.createElement('div');el.className='queue-item';
+      const name=document.createElement('span');name.textContent=row.key||'Recording';
+      const state=document.createElement('small');state.textContent=row.status||'';
+      el.append(name,state);list.append(el);
+    }
+  }catch{
+    $('queueStatus').textContent='Cannot read EKS processing status. Check the service connection.';
+  }
+}
+
+loadCorporateRuntime().then(refreshCorporateOperations);
+setInterval(refreshCorporateOperations,10000);
 setInterval(()=>{scanConfiguredInput().catch(e=>queueMessage(e.message));},AUTO_SCAN_INTERVAL_MS);
 document.addEventListener('visibilitychange',()=>{
   if(!document.hidden)scanConfiguredInput().catch(e=>queueMessage(e.message));
