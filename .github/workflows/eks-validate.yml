@@ -24,3 +24,5 @@ jobs:
           node --check public/local-folders.js
       - name: Run contract and API regression tests
         run: npm test
+      - name: Verify container image builds
+        run: docker build -t mafer-audio-intelligence:eks-ci .
