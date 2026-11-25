@@ -1,147 +1,115 @@
-# MAFer Audio Intelligence
+# MAFer Audio Intelligence — Corporate EKS Build
 
-**Current live-integration MVP:** See [README-LIVE.md](README-LIVE.md) and the `public/` frontend with `worker.mjs`. The live MVP makes actual model calls only after `OPENAI_API_KEY` has been configured in Cloudflare and the rate-limit binding deployed. No demo password is required. **Do not treat API configuration as a verified successful transcription.**
+**Source branch: corporate/eks-audio-intelligence**
 
----
+This is the **corporate Node.js/EKS source code**, adapted from the personal audio intelligence prototype using the actual MAFerLens Node.js 24/distroless Docker and server pattern. This application is independently deployed and does not modify MAFerLens.
 
-## Archived browser-only prototype documentation
+**Status: EKS integration candidate. Not approved production.** Corporate security, IAM, authentication, performance, S3/Transcribe and APIM connectivity tests are mandatory before customer recordings.
 
-The following notes describe the older root-level browser prototype. It is not the current Worker application.
+## Runtime
 
+- Node.js 24 server: src/server.js, port 8080.
+- Dockerfile: Node 24 Alpine build/verification and distroless Node 24 Debian 13 non-root final image.
+- Amazon Transcribe batch with speaker diarization and real timestamps, through AWS SDK v3 (src/aws-transcribe.js).
+- Corporate Azure OpenAI/Foundry through approved APIM and Vault-injected secret (src/enterprise-ai.js), based on the MAFerLens enterprise AI adapter.
+- Background S3 scanner/processor (src/s3-processor.js) continues processing without an open browser.
+- Manual upload: one click runs transcription, conservative speaker identification, AI intelligence and S3 publication (src/publish.js).
+- Existing frontend pages under public/ are served by the Node app, **not Cloudflare**.
 
-Standalone, bilingual contact-centre **audio transcription and interaction intelligence** platform prototype.
+## Corporate deployment steps
 
-> **Prototype only:** all recordings, Genesys conversation IDs, CRM ticket references, service responses, provider states, tokens and errors in the application are synthetic. No actual Genesys, S3, CRM, APIM, Vault, or QA.MAFer.AI integrations are connected. Never enter real credentials or customer information into this preview.
+1. Download this branch and upload its **extracted folder structure** into a dedicated corporate GitHub application/repository, separate from MAFerLens.
+2. Replace placeholders in deploy/eks.example.yaml using your actual corporate namespace, registry, internal hostname, approved AWS region, bucket names and APIM endpoint. This is a template, not a directly deployable manifest.
+3. Configure an independent EKS ServiceAccount with an approved **Pod Identity or IRSA** role; never place static AWS access keys in source, environment templates or the UI.
+4. Authorize least-privilege S3 List/Get/Put/Head for approved input/output prefixes, Delete for temporary staging audio, Amazon Transcribe Start/Get, and KMS access when applicable. Verify the Transcribe service can read input and write its output to S3.
+5. Inject ENTERPRISE_AI_API_KEY through Vault or an approved Kubernetes secret integration. ENTERPRISE_AI_ENDPOINT remains a non-secret runtime setting.
+6. Provision the standard corporate internal-only ingress with TLS, authentication, networking and approved outbound paths. Set PUBLIC_ORIGIN to the full corporate HTTPS origin. **No SSO or RBAC middleware has been implemented in this application.**
+7. Test in EKS dev with approved synthetic/anonymized audio. The corporate pipeline should generate and commit a reviewed package-lock.json and then use npm ci for reproducible builds.
 
-## Scope
+The app adopts MAFerLens's deployment convention but must use its **own** ingress hostname, service account, storage, and release lifecycle. Do not copy MAFerLens's existing application secrets or database.
 
-- **Operations Console:** end-to-end processing counts and statuses for transcription, AI summarization, CRM update, CRM confirmation, and S3 output readiness; stage-specific exceptions.
-- **Manual Audio Upload:** browser-local file selection, audio playback, new interaction staging and failed-run retry staging (MP3/WAV/M4A/AAC/FLAC/OGG/WebM, up to 50 MB). Actual transcription requires a secure backend.
-- **Interaction Explorer:** full English/Arabic timestamped transcript, CRM summary, customer closing sentiment, emotional indicators, conversation signals, interaction references, original-language evidence, interaction metadata and Word-compatible preview exports.
-- **Configuration Console (Admin only):** technical speech-to-text and summarization provider settings, Genesys/CRM/S3 connections and simulated health checks. **Extraction categories, rules and output schema are fixed in code, not editable.**
-- **AI Usage & Diagnostics:** audio minutes, LLM tokens, retries, provider error codes, request IDs and stage-specific diagnostics.
-- **Demo personas:** Platform Admin and BU-scoped Leads (VOX, SHARE, AMBU and Retail). Both can access manual audio upload and their permitted interactions. Admin retains technical Config Console and diagnostics. These are UI-only simulations; production authorization must be enforced on a backend.
+## Environment configuration
 
-## Design principles
+Core variables are represented in deploy/eks.example.yaml:
 
-1. The Genesys **Conversation ID** is the interaction correlation key. The CRM owns ticket IDs and the mapping from Conversation ID to one or more tickets.
-2. This product owns transcription and interaction intelligence; **QA.MAFer.AI independently owns quality scoring**.
-3. Every speech segment must have STT-generated audio-relative start/end timestamps in milliseconds, a speaker label and original-language text. English, Arabic and bilingual speech are all subject to the same mandatory contract. CRM summaries are provided in configured languages.
-4. The service uses a **fixed, versioned output contract**: transcript, CRM summary, customer closing sentiment, optional emotional indicators, conversation signals, interaction references, metadata, evidence and processing state. No editable EQ framework, intelligence enrichment configuration, QA rubric or scoring logic.
-5. Failures are independently tracked by stage. CRM acknowledgment timeout must be reconciled before retrying writes.
-6. The Word files are human-readable deliverables; **JSON/APIs** (once implemented) are for downstream CRM and QA consumption.
-7. Sensitive credentials stay in corporate Vault; the admin UI should only reference DevOps-approved connections.
+- PORT = 8080
+- PUBLIC_ORIGIN = corporate HTTPS origin
+- AWS_REGION = approved AWS region
+- TRANSCRIPTION_PROVIDER = amazon
+- ANALYSIS_PROVIDER = enterprise
+- ANALYSIS_MODEL = approved deployment, e.g. gpt-4o
+- ENTERPRISE_AI_ENDPOINT = approved APIM HTTPS Chat Completions URL
+- ENTERPRISE_AI_API_KEY = secret injected at runtime
+- S3_INPUT_BUCKET / S3_INPUT_PREFIX
+- S3_OUTPUT_BUCKET / S3_OUTPUT_PREFIX
+- S3_PROCESS_ENABLED = true
+- S3_SCAN_INTERVAL_SECONDS = 90
+- S3_MAX_BATCH = 3
+- TRANSCRIBE_LANGUAGE_MODE = auto or multi (confirm country/language combinations)
+- MAX_SPEAKERS = 5
+- S3_KMS_KEY_ID = optional corporate KMS key
 
-## Run locally
+The configuration page **displays effective S3 and provider settings read-only** and checks real S3 list-access. Securely editing runtime values from that page is not implemented yet: updating approved ConfigMap/secret references and rolling out pods changes the service **without changing Docker source**. All credentials remain server side.
 
-Open `index.html` in a modern browser. No dependencies or build tooling required.
+## Build and validation
 
-Some non-secret integration configuration is stored in browser localStorage only. Manually selected audio is held in memory for the current browser session, **never in localStorage**. Do not treat localStorage as production persistence or a shared approval workflow.
+~~~sh
+npm install
+npm run check:eks
+npm test
+docker build -t mafer-audio-intelligence:eks .
+~~~
 
-## Files
+The corporate image copies worker.mjs as an internal API module only. It does not run Wrangler or Cloudflare Workers.
 
-- `index.html` — page shell
-- `styles.css` — responsive visual design
-- `sample-data.js` — synthetic interactions with start/end timestamps and seeded configuration
-- `transcript-contract.js` — mandatory segment timing schema, validation, and completion gate (browser prototype only)
-- `conversation-signals.js` — fixed extraction instructions, versioned structured output and evidence validation; no QA rubric
-- `app.js` — UI rendering, filtering, simulated actions, diagnostics, document exports
-- `manual-audio.js` — file validation, local audio playback, manual run staging and feature-gated same-origin submission
-- `tests/smoke.cjs` — Node.js startup, fixed-output, timestamp display, no intelligence configuration and BU access tests
-- `tests/timestamps.cjs` — mandatory timing validation, completion gate and error cases
-- `tests/conversation-signals.cjs` — fixed output schema, closing sentiment, evidence and audio-only validation
-- `docs/ARCHITECTURE.md` — production integration boundaries and future build plan
+## Health and API endpoints
 
-## Production integration (not included)
+- GET /api/livez — liveness probe
+- GET /readyz — runtime configuration readiness; **not** vendor-connection verification
+- GET /api/health — configured provider names and model IDs
+- GET /api/config — effective S3/provider settings, no secrets
+- GET /api/operations — S3 scanner status and recent jobs (per-pod, non-persistent counters)
+- GET /api/connections/health — actual S3 list-access check only; **not** a live Transcribe/APIM test
+- POST /api/transcribe — upload audio; Amazon Transcribe batch
+- POST /api/identify-speakers — evidence-linked, unverified candidate roles
+- POST /api/analyze — transcript-grounded universal interaction intelligence
+- POST /api/publish — manual analyzed package to corporate S3
 
-Corporate AWS EKS, Genesys recording export to S3 + processing queue, configurable English/Arabic speech engine, APIM-based summarization, PostgreSQL, Vault and IAM, CRM ticket reconciliation, read-only QA.MAFer.AI S3 ingestion, authorization, audit, observability, security, retention, and approved S3 DOCX storage.
+All interfaces must be behind authenticated internal ingress. There is no integrated corporate SSO in this source package.
 
-The frontend cannot determine if a provider is actually healthy by testing only from the browser: production connectivity tests and health metrics must run on a secure backend.
+## Universal S3 output
 
-## Security
+The EKS scanner reads files from the configured input prefix. Genesys metadata can be provided by an adjacent sidecar file (<audio-filename-stem>.metadata.json or <audio-filename-stem>.json). BU may also be derived from a trusted BU-labelled input key. **Missing BU/agent/market values remain unassigned, not guessed.**
 
-The GitHub repository was created with **public** visibility as observed when first accessed. Keep only synthetic data in this repository. Change visibility to private in GitHub settings before adding internal specs or sensitive implementation details; never commit secrets or real customer transcripts.
-## Current preview limitations
+Output paths:
 
-- This version creates **Word-compatible .doc** demo downloads, not native **.docx**. Native DOCX generation and S3 folder writing belong in the production backend.
-- The project owner has provided a Cloudflare Workers preview URL. The deployed revision and CI workflow result must be verified separately; source commits alone do not establish live deployment.
-- The demo role selector is not real authentication. Production needs backend-enforced RBAC.
+~~~text
+<S3_OUTPUT_PREFIX>/BU/Brand/Market/YYYY/MM/DD/InteractionID/run-<fingerprint>/
+  Full_Transcript/transcript.json
+  Full_Transcript/transcript.txt
+  CRM_Summary/summary.json
+  Machine_Data/interaction_metadata.json
+  Machine_Data/universal_intelligence.json
+  Machine_Data/timeline_metrics.json
+  Machine_Data/acoustic_evidence.json
+  Machine_Data/evidence_provenance.json
+  manifest.json
+~~~
 
+The manifest is written last. COMPLETE marks the package ready for BU-specific QA consumers. Unclear diarized speaker roles produce NEEDS_SPEAKER_REVIEW, not a falsely verified agent/customer mapping. The model outputs no QA scores. Failed S3 items generate durable failure markers under <S3_OUTPUT_PREFIX>/_failures/ and do not repeatedly trigger paid requests on every scan. Removing a failure marker after investigation permits retry.
 
-## Personal test deployment
+Timestamp-based talk ratios, gaps and overlap intervals are provisional derived metrics, not verified waveform evidence. Acoustic evidence is NOT_PROCESSED until an actual signal analyzer is added. CRM actions and policy compliance are not inferred as externally verified facts from audio alone.
 
-Cloudflare Workers URL provided by project owner:
-https://mafer-audio-intelligence.kris-pradip.workers.dev/
+## Limits and pending production readiness
 
-**Verification:** The link was provided as the deployment target, but live reachability and the published code revision have not been verified from this environment.
+- One EKS scanner replica only. Production-scale concurrency requires SQS/distributed job coordination and durable centralized job-status storage.
+- Current Operations counters exist per pod and reset on restart. S3 manifests remain durable.
+- Speaker-review workflows require an administrative review/resume implementation before full unattended completion can be guaranteed.
+- Manual Amazon Transcribe batch requests may run longer than standard ingress idle timeouts; validate with IT. The background S3 pipeline is the preferred operating mode.
+- APIM model output, Arabic/English switching, transcription quotas, S3 regional support, folder authorization, encryption, scanning throughput, and actual AWS IAM must be validated in corporate EKS.
+- MAFerLens consumption of the richer versioned metadata is a **separate application update**, not implemented in this repository.
+- No customer PII/call recordings should be uploaded before corporate security, retention and access approvals.
 
-### Test-data policy
+## Personal POC stays separate
 
-The personal sandbox is intended to process **synthetic English, Arabic and bilingual audio recordings**. Using synthetic audio does **not** require model responses to be simulated: future integrations can call real, separately configurable speech-to-text and summarization APIs through server-side adapters with secure secrets. No real customer recordings, CRM credentials, or corporate secrets should be committed to this public repository.
-
-Target test flow:
-1. Upload or select a synthetic call recording; assign a mock Genesys Conversation ID.
-2. Execute an approved speech-to-text service that provides per-segment start/end timestamps and speaker labels; reject results without valid time alignment.
-3. Execute the independently configured summarization service using **code-owned extraction instructions** for CRM facts, closing sentiment, emotional indicators, conversation signals and interaction references, without scoring agent behaviour.
-4. Produce two Word documents and JSON artifacts.
-5. Simulate or sandbox-test CRM ticket correlation, update, acknowledgment, timeout and retry/reconciliation.
-6. Publish completed transcript JSON and a versioned manifest to S3 for independent read-only consumption by QA.MAFer.AI, without incorporating official QA scoring into this standalone service.
-
-The committed frontend **currently simulates** the transcription, summary and connection responses. Audio file selection, playback and local staging are implemented; actual transcription/model invocation and native DOCX export still require the backend. GitHub-to-Cloudflare auto-deployment has not been established by this repository's current code.
-
-## Mandatory transcription timestamps
-
-**Non-negotiable STT output contract:** Every spoken segment must contain `startMs` and `endMs` (integer milliseconds relative to recording start), `speaker` and `text` in the original language. Timestamps are produced by the transcription engine or a time-aligned STT adapter, **not guessed by the summarization LLM**. This requirement applies equally to English, Arabic and code-switched calls; it is not a QA scoring setting or a toggle in Config Console.
-
-```json
-{
-  "transcriptSchemaVersion": "1.0",
-  "segments": [
-    {"startMs": 5000, "endMs": 12000, "speaker": "Customer", "text": "I need help with my booking."},
-    {"startMs": 16000, "endMs": 26000, "speaker": "Agent", "text": "Let me check the booking."}
-  ]
-}
-```
-
-Completion requires at least one valid speech segment, integer nonnegative times, `endMs > startMs`, ordered start times, end times within known recording duration, and nonempty speaker/text fields. Overlapping speaker turns are allowed. If a recording is genuinely silent, it needs an explicit **no-speech** outcome rather than a fabricated transcript or a false `completed` status.
-
-When timing is missing, invalid, out of order or outside the audio duration, the transcription must be marked failed/incomplete with a diagnostic code. It cannot be counted as completed, exported as a completed transcript, or published to S3/QA; downstream summary/CRM processing must wait for a valid transcript. A provider that cannot deliver timestamps is **not eligible** for production use.
-
-The prototype validates structural timestamp correctness, displays start/end time ranges, and blocks completion/readiness for invalid demo records. **It does not perform real STT or verify audio-to-text synchronization**. Production must enforce the same contract in the backend, verify time alignment against the actual recording and preserve the timestamps in DOCX/JSON/S3 artifacts.
-
-## Fixed Audio Intelligence output contract
-
-There is **no business-facing Intelligence Configuration or EQ Framework screen**. Admin can configure approved service endpoints, models and integration settings; business users do not edit extraction prompts, criteria or output categories. The fixed contract lives in `conversation-signals.js` (`outputSchemaVersion: "3.0"`, prompt template version `1.5`). Backend implementation must use a corresponding centrally versioned contract and validate all outputs.
-
-| Output | Fixed requirement |
-| --- | --- |
-| Full transcript | Original English/Arabic text, speaker labels, mandatory STT-generated start/end timestamps for every segment |
-| CRM summary | Reason for contact, issues, explicitly stated actions, verified resolution status, next steps |
-| Customer sentiment | Did the customer leave Happy, Unhappy, Neutral or Unclear? Ground the result in the final customer speech |
-| Emotional indicators | Optional observable frustration, concern, reassurance or appreciation; identify speaker and supporting evidence |
-| Conversation signals | Optional interruptions, escalation requests, long silences and overlapping speech **only when supported by the source** |
-| Interaction references | Optional key questions, commitments, promises, resolutions and follow-up actions; distinguish stated intent from verified action |
-| Interaction metadata | Genesys Conversation ID, agent, BU, brand, market, language, duration and CRM Ticket ID if mapped |
-| Evidence | Original-language dialogue and timestamp per observation; recording reference only when available and verified |
-| Processing | Stage statuses, failures, retry eligibility and future S3 output readiness |
-
-**Evidence safety:** Audio-only observations (interruptions, long silences and overlapping speech) require verified audio analysis and an actual recording reference. They must never be inferred from gaps in an excerpted transcript. Transcript-derived emotional indicators must be supported by actual spoken words, not speculative vocal tone. Missing observations are not QA failures. Never invent CRM actions or recording URLs.
-
-**QA boundary:** MAFer Audio Intelligence produces evidence; **QA.MAFer.AI** independently applies BU rubrics, validates evidence, and assigns scores. No QA parameters, weights, grades, EQ assessments or problem-solving scores are generated by this product. JSON preview exports use the fixed structured contract rather than exporting internal demo objects.
-
-The current prototype contains **synthetic sample observations only**; it does not perform live AI extraction or audio analysis. Production must implement the fixed schema and prompt in the secure backend, validate model outputs against the actual recording/transcript, and retain provenance and versions.
-
-## Manual audio upload and controlled recovery
-
-The **Manual Audio Upload** page is available to Platform Admin and BU Lead personas. The demo role selector supports VOX, SHARE, AMBU and Retail leads, each restricted to their BU's interactions. It accepts MP3, WAV, M4A, AAC, FLAC, OGG and WebM files up to **50 MB**, validates extension/MIME/size, and offers an in-browser audio player where the browser supports the format. Use **synthetic recordings only** in this public preview.
-
-Two workflows are supported:
-
-1. **New manual interaction:** choose a file and enter BU, brand, agent, market, language and optionally an existing Genesys Conversation ID. Staging creates a new interaction with waiting processing statuses and **no fabricated transcript or intelligence results**.
-2. **Retry failed interaction:** open a failed transcription or summarization interaction and choose **Upload audio to retry**, or select Retry from the manual upload page. Staging preserves the existing Conversation ID and any completed transcript/summary. The retry is marked as browser-local until a real service accepts it.
-
-Staging does not upload audio or invoke an LLM. Audio bytes are held in browser memory only and are discarded on refresh or when the form is cleared. The **Submit to processing service** button is intentionally gated behind `window.MAFER_MANUAL_AUDIO_API_ENABLED === true` and cannot submit audio until the secure same-origin API is provisioned. When enabled, it sends `multipart/form-data` to `POST /api/manual-audio/jobs` and expects a JSON response with a non-empty `jobId`. The UI marks the job as accepted, **not completed**. The backend must own subsequent status updates and artifact publication.
-
-**Required backend controls:** authenticated identity, server-enforced BU scope, authorized retry against the original Conversation ID, file/MIME/size validation, malware scanning, secure temporary/S3 storage, idempotency, processing queue, status/result retrieval, audit trail, retention and retries. Do not enable the feature flag before this API and its access controls are deployed. The browser must never hold service API keys.
-
-The current demo has **no connected processing endpoint**; real audio-to-text, conversation summarization, sentiment extraction, CRM updates and S3 output are not produced by staging. The existing synthetic interactions remain available for demonstrations of completed results.
+The personal GitHub main branch remains the Cloudflare/Gemini prototype. **Do not merge personal Wrangler/Cloudflare configuration into the corporate deployment.** This dedicated branch is the corporate EKS package.
