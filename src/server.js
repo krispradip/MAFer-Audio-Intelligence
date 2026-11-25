@@ -40,9 +40,9 @@ function requiredReady(env){
   const analysis=env.ANALYSIS_PROVIDER||'enterprise';
   const region=env.AWS_REGION||env.AWS_DEFAULT_REGION;
   const storage=Boolean(region&&env.S3_INPUT_BUCKET&&env.S3_OUTPUT_BUCKET);
-  const transcribe=audio==='amazon'?storage:audio==='gemini'?Boolean(env.GEMINI_API_KEY):audio==='openai'?Boolean(env.OPENAI_API_KEY):false;
-  const llm=analysis==='enterprise'?Boolean(env.ENTERPRISE_AI_ENDPOINT&&env.ENTERPRISE_AI_API_KEY&&!String(env.ENTERPRISE_AI_API_KEY).startsWith('vault:')):
-    analysis==='gemini'?Boolean(env.GEMINI_API_KEY):analysis==='openai'?Boolean(env.OPENAI_API_KEY):false;
+  const transcribe=audio==='amazon'&&storage;
+  const llm=analysis==='enterprise'&&Boolean(env.ENTERPRISE_AI_ENDPOINT&&env.ENTERPRISE_AI_API_KEY&&
+    !String(env.ENTERPRISE_AI_API_KEY).startsWith('vault:'));
   return {ready:transcribe&&llm,transcriptionConfigured:transcribe,intelligenceConfigured:llm,
     s3Configured:storage,transcriptionProvider:audio,intelligenceProvider:analysis};
 }
