@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#111e37"><title>MAFer Audio Intelligence · Corporate UI Preview</title><meta name="robots" content="noindex,nofollow"><link rel="stylesheet" href="./styles.css"></head>
+<body><div class="shell">
+<aside class="sidebar"><div class="brand"><div class="brand-mark"><span>◉</span></div><div><strong>MAFer<span>Audio</span></strong><small>INTELLIGENCE</small></div></div><div class="nav-label">WORKSPACE</div>
+<nav class="nav-links" aria-label="Application pages">
+<button type="button" class="side-link active" id="navUpload" data-route="upload" aria-current="page"><span>◈</span> Audio Upload</button>
+<button type="button" class="side-link" id="navTranscript" data-route="transcript" disabled><span>≡</span> Transcript &amp; Evidence</button>
+<button type="button" class="side-link" id="navIntelligence" data-route="intelligence" disabled><span>✦</span> Interaction Intelligence</button>
+<button type="button" class="side-link" id="navQA" data-route="handoff" disabled><span>⇩</span> QA Handoff</button>
+<button type="button" class="side-link" id="navOperations" data-route="operations"><span>◷</span> Operations &amp; Health</button>
+<button type="button" class="side-link" id="navConfig" data-route="configuration"><span>⚙</span> Configuration</button>
+</nav>
+<div class="mobile-nav"><label for="mobilePageSelect">Choose a page</label>
+<select id="mobilePageSelect" aria-label="Navigate between application pages">
+<option value="upload">Audio Upload</option>
+<option value="transcript" disabled>Transcript &amp; Evidence</option>
+<option value="intelligence" disabled>Interaction Intelligence</option>
+<option value="handoff" disabled>QA Handoff</option>
+<option value="operations">Operations &amp; Health</option>
+<option value="configuration">Configuration</option>
+</select></div><div class="sidebar-bottom"><div class="side-box"><div class="indicator"></div><b>Real model processing</b><p>No sample interactions. No fabricated results.</p></div><small>STANDALONE SERVICE<br>QA scoring remains in QA.MAFer.AI</small></div></aside>
+<div class="workspace"><header class="topbar"><div><span class="breadcrumb">MAFer Audio Intelligence</span><span class="slash">/</span><b id="pageTitle">Audio Upload</b></div><div class="topright"><span id="engineStatus" class="engine-state">Checking service…</span><span class="release">GH PAGES PREVIEW</span></div></header>
+
+<main>
+<section class="preview-banner" role="status"><strong>Corporate EKS interface preview</strong><p>This is a static GitHub Pages preview of the corporate application. Amazon Transcribe, S3, APIM, audio uploads and automated processing are not connected here. Do not upload customer recordings or enter credentials.</p></section>
+<div id="message" class="message" role="status" aria-live="polite" hidden></div>
+<section id="processingRibbon" class="processing-ribbon" role="status" aria-live="polite">
+  <div class="processing-ribbon-heading"><strong id="progressTitle">Waiting for corporate EKS deployment</strong><span id="progressStage">Idle</span></div>
+  <progress id="progressBar" max="5" value="0" aria-label="Processing stages completed"></progress>
+  <div class="processing-ribbon-bottom"><span id="progressDetail">Open any navigation page to review the interface. Live audio processing is disabled in this preview.</span><span id="progressCount">0 / 5 stages</span></div>
+</section>
+<section id="pageUpload" class="app-page" data-page="upload">
+<div class="hero"><div><div class="eyebrow">AUDIO → INTELLIGENCE → QA HANDOFF</div><h1>Audio Intelligence Workbench</h1><p>Select an audio recording and click Transcribe. The transcript, speaker analysis, interaction intelligence and output will run automatically where the evidence permits.</p></div><div class="hero-badge"><b id="completedCount">0</b><small>Interactions processed<br>this session</small></div></div>
+<div class="steps" id="steps"><div class="step active" data-step="1"><span>01</span><div><b>Upload recording</b><small>Choose audio & metadata</small></div></div><div class="step" data-step="2"><span>02</span><div><b>Transcribe & verify</b><small>Speaker roles + timestamps</small></div></div><div class="step" data-step="3"><span>03</span><div><b>AI analysis & export</b><small>Evidence → QA JSON</small></div></div></div>
+<section class="panel" id="uploadPanel"><div class="panel-title"><div><span class="section-num">01 / SOURCE</span><h2>Record a real interaction</h2></div><span class="pill blue">File upload</span></div>
+<div class="panel-body"><div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Choose an audio recording"><div class="dropicon">♫</div><b id="dropTitle">Choose an audio recording</b><span id="dropDesc">MP3, WAV, M4A, MP4, FLAC, OGG or WebM · maximum 24 MB</span><button type="button" class="button outline" id="browseBtn">Browse files</button><input id="audioFile" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.webm,.mp4,.mpeg,.mpga" hidden></div><audio id="player" controls preload="metadata" hidden></audio>
+<div class="metadata-import"><div><b>Automatic metadata</b><p>Conversation ID is read from the filename. Import a Genesys metadata JSON for agent, business unit, brand and market where available. All fields remain editable.</p><small id="metadataState">No Genesys metadata imported</small></div><button id="importMetadataBtn" type="button" class="button outline" disabled>Import metadata JSON</button><input id="metadataFile" type="file" accept=".json,application/json" hidden></div>
+<div class="fields">
+<label>Genesys Conversation ID <span>(optional)</span><input id="conversationId" placeholder="Identified from filename when available" maxlength="128"><small class="field-source" id="conversationIdSource">Awaiting recording</small></label>
+<label>Agent name <span>(optional)</span><input id="agentName" placeholder="From Genesys metadata when available" maxlength="120"><small class="field-source" id="agentNameSource">Not identified</small></label>
+<label>Business unit<select id="bu"><option value="">Unassigned / Select BU</option><option value="VOX">VOX</option><option value="SHARE">SHARE</option><option value="AMBU">AMBU</option><option value="Retail">Retail</option><option value="Other">Other</option></select><small class="field-source" id="buSource">Not supplied</small></label>
+<label>Brand<input id="brand" placeholder="e.g. VOX Cinemas" maxlength="80"><small class="field-source" id="brandSource">Not identified</small></label>
+<label>Market<select id="market"><option value="">Unassigned / Select market</option><option value="UAE">UAE</option><option value="KSA">KSA</option><option value="Oman">Oman</option><option value="Bahrain">Bahrain</option><option value="Other">Other</option></select><small class="field-source" id="marketSource">Not supplied</small></label>
+<label>Spoken language<select id="language"><option value="auto">Auto-detect / bilingual</option><option value="en">English</option><option value="ar">Arabic</option></select><small class="field-source" id="languageSource">Auto-detect on transcription</small></label>
+</div><div class="buttons"><button id="transcribeBtn" class="button primary" disabled><span>✦</span> Transcribe audio</button><button id="clearBtn" class="button text-btn">Clear & start again</button></div></div></section>
+</section>
+<section id="pageTranscript" class="app-page" data-page="transcript" hidden>
+<section id="transcriptionPanel" class="panel"><div class="panel-title"><div><span class="section-num">02 / TRANSCRIPT</span><h2>Transcript &amp; speakers</h2></div><span class="pill green">Timestamped speech</span></div><div class="panel-body"><p class="helper">Speaker roles are inferred automatically when supported by clear transcript evidence. Review them only if identification is uncertain.</p><div id="speakerMap" class="speaker-grid"></div><div class="buttons"><button id="analyzeBtn" class="button primary" disabled><span>✦</span> Continue analysis</button><span id="speakerHint" class="helper"></span></div><audio id="transcriptPlayer" controls preload="metadata" hidden aria-label="Transcript audio playback"></audio><div class="mini-head"><h3>Full transcript</h3><b id="segmentCount"></b></div><div id="transcript" class="transcript"></div></div></section>
+</section>
+<section id="pageIntelligence" class="app-page" data-page="intelligence" hidden>
+<section id="resultsPanel" class="panel"><div class="panel-title"><div><span class="section-num">03 / INTELLIGENCE</span><h2>Interaction intelligence</h2></div><span class="pill green">LLM analyzed</span></div><div class="panel-body"><div class="result-top"><div class="result-stat"><small>Closing sentiment</small><strong id="sentiment">—</strong></div><div class="result-stat"><small>Resolution status</small><strong id="resolutionStatus">—</strong></div><div class="result-stat"><small>Issues identified</small><strong id="issueCount">—</strong></div></div><audio id="evidencePlayer" controls preload="metadata" hidden aria-label="Intelligence evidence playback"></audio><div id="results" class="results"></div></div></section>
+
+</section>
+<section id="pageQA" class="app-page" data-page="handoff" hidden>
+<section class="panel">
+<div class="panel-title"><div><span class="section-num">04 / OUTPUT</span><h2>QA Handoff</h2></div><span class="pill green">Evidence export</span></div>
+<div class="panel-body">
+<div class="handoff" id="handoffPanel"><div><b>QA handoff — awaiting EKS deployment</b><p>When the corporate service is running, this page will provide evidence-linked JSON packages for independent BU QA tools. No data is generated in the preview.</p></div><div class="buttons"><button id="downloadJson" class="button primary">↓ QA JSON</button><button id="downloadText" class="button outline">↓ Transcript TXT</button></div></div>
+</div></section>
+</section>
+<section id="pageOperations" class="app-page" data-page="operations" hidden>
+<div class="page-heading"><h1>Operations &amp; Health</h1><p>Processing progress, provider status and connection diagnostics.</p></div>
+<section class="panel queue-panel"><div class="panel-title"><div><h2>Automatic processing</h2><p class="tiny">Local HDD scans while the page is open; S3 requires the corporate processing service.</p></div></div>
+  <div class="panel-body"><div class="queue-stats"><div><small>Queue</small><strong id="queueCount">0</strong></div><div><small>Completed</small><strong id="queueCompleted">0</strong></div><div><small>Needs attention</small><strong id="queueFailed">0</strong></div></div>
+  <p class="helper" id="queueStatus">No automatic folder configured.</p><div id="queueItems" class="queue-items" aria-live="polite"></div>
+  </div></section>
+<div class="rail"><section class="panel rail-card"><div class="panel-title"><h2>Processing monitor</h2></div><div class="panel-body"><div class="statusline"><span id="sttDot" class="statusdot"></span><div><b>Speech recognition</b><small id="sttState">Not started</small></div></div><div class="statusline"><span id="rolesDot" class="statusdot"></span><div><b>Speaker identification</b><small id="rolesState">Waiting for audio</small></div></div><div class="statusline"><span id="llmDot" class="statusdot"></span><div><b>AI intelligence</b><small id="llmState">Not started</small></div></div><div class="statusline"><span id="qaDot" class="statusdot"></span><div><b>QA handoff</b><small id="qaState">No export available</small></div></div></div></section>
+<section class="panel rail-card"><div class="panel-title"><h2>Service configuration</h2></div><div class="panel-body"><p class="tiny">Credentials are resolved on the EKS server from approved Vault bindings and AWS Pod Identity. Verify corporate ingress authentication before processing real customer audio.</p><div class="service-detail"><span>Live processing configuration</span><strong id="protectionStatus">Checking…</strong></div><div class="service-detail"><span>Transcription model</span><strong id="sttModel">—</strong></div><div class="service-detail"><span>Analysis model</span><strong id="llmModel">—</strong></div><div class="service-detail"><span>Last request</span><strong id="lastRequest">None</strong></div><button id="refreshHealth" class="button outline fill">↻ Check configuration</button><p class="tiny">Configured status is not a claim that a provider call has succeeded. Real upload requests verify connectivity.</p></div></section>
+<section class="panel rail-card"><div class="panel-title"><h2>Processing safeguards</h2></div><div class="panel-body"><p class="small-item">✓ No synthetic transcript or summary fallback</p><p class="small-item">✓ Timestamp validation blocks invalid output</p><p class="small-item">✓ Human confirmation of speaker roles</p><p class="small-item">✓ No fabricated CRM updates or QA scores</p><p class="tiny">Audio is sent to the configured Amazon Transcribe service when that provider is active. Production recordings require approved IAM, ingress authentication, security and retention controls.</p></div></section></div>
+</section>
+<section id="pageConfig" class="app-page" data-page="configuration" hidden>
+<section id="configPanel" class="panel config-panel">
+  <div class="panel-title"><div><span class="section-num">CONFIGURATION</span><h2>Sources, destinations & processing</h2></div><span class="pill blue">Connections</span></div>
+  <div class="panel-body">
+    <p class="helper">The EKS service automatically reads recordings from its approved S3 input location and publishes completed intelligence to S3. No browser needs to remain open. Runtime connection settings are provided securely by corporate DevOps.</p>
+    <div class="config-grid" id="corporateConfiguration">
+      <div class="config-group"><h3>Input source</h3><label>S3 bucket and prefix
+        <input id="runtimeInputLocation" readonly placeholder="Reading corporate settings…"></label>
+        <p class="tiny">Automatic background scanning by the EKS service.</p>
+      </div>
+      <div class="config-group"><h3>Output destination</h3><label>S3 bucket and prefix
+        <input id="runtimeOutputLocation" readonly placeholder="Reading corporate settings…"></label>
+        <p class="tiny">BU / Brand / Market / Date / Interaction ID.</p>
+      </div>
+      <div class="config-group"><h3>Transcription</h3><label>Active provider
+        <input id="runtimeSpeechProvider" readonly></label></div>
+      <div class="config-group"><h3>Intelligence analysis</h3><label>Active provider and model
+        <input id="runtimeAnalysisProvider" readonly></label></div>
+    </div>
+    <div class="buttons"><button type="button" class="button outline" id="corporateHealthCheck">Test S3 connection</button>
+      <span class="helper" id="corporateConfigStatus">Waiting for corporate runtime configuration.</span></div>
+    <p class="tiny">The connections above are read-only. EKS runtime settings, IAM roles and Vault secrets are configured by DevOps. Editing them securely from this page requires an approved authenticated configuration store.</p>
+    <details class="local-browser-options"><summary>Optional local-folder testing (desktop Chrome/Edge only)</summary>
+    <div class="config-grid">
+      <div class="config-group">
+        <h3>Input folder</h3>
+        <label>Read recordings from
+          <select id="configInputType">
+            <option value="manual">Manual upload only</option>
+            <option value="local">Local HDD folder — automatic while this page is open</option>
+            <option value="s3">S3 managed by EKS</option>
+          </select>
+        </label>
+        <button type="button" class="button outline" id="selectInputFolder">Choose input folder</button>
+        <p class="helper" id="inputFolderStatus">No input folder selected.</p>
+        <p class="tiny">Once saved, new recordings are scanned automatically. Browser folder access requires a supported desktop browser and permission.</p>
+      </div>
+      <div class="config-group">
+        <h3>Output folder</h3>
+        <label>Save results to
+          <select id="configOutputType">
+            <option value="download">Automatic JSON download</option>
+            <option value="local">Local HDD folder</option>
+            <option value="s3" disabled>S3 bucket — corporate adapter not connected</option>
+          </select>
+        </label>
+        <button type="button" class="button outline" id="selectOutputFolder">Choose output folder</button>
+        <p class="helper" id="outputFolderStatus">No output folder selected.</p>
+        <p class="tiny">Completed files use the same BU / brand / market / date / interaction folder layout planned for S3.</p>
+      </div>
+    </div>
+    <div class="buttons"><button type="button" class="button primary" id="saveConfiguration">Save Settings</button></div>
+    <p class="helper" id="configurationStatus" role="status">Select folders once and save settings. The app will scan automatically while open.</p>
+    </details>
+  </div>
+</section>
+</section>
+</main><footer>MAFer Audio Intelligence · Corporate interface preview on GitHub Pages · No live processing</footer></div></div>
+<script type="module" src="./preview.js"></script></body></html>
